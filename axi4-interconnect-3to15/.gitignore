@@ -1,0 +1,35 @@
+
+# Compiled simulation outputs
+*.vvp
+*.out
+simv
+simv.daidir/
+csrc/
+
+# Verdi
+verdiLog/
+novas.conf
+*.rc
+
+# VCS
+DVEfiles/
+ucli.key
+
+# Build files
+*.o
+*.a
+
+# Logs
+*.log
+*.tmp
+
+# Python
+__pycache__/
+*.pyc
+
+# Editor files
+*.swp
+*.swo
+
+# OS files
+.DS_Store

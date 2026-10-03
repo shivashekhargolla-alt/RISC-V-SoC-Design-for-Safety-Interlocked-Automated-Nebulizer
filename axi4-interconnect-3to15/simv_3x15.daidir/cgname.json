@@ -1,0 +1,56 @@
+{
+    "std": [
+        "std",
+        "reYIK",
+        "module",
+        1
+    ],
+    "priority_encoder_0000": [
+        "priority_encoder_0000",
+        "VTikG",
+        "module",
+        2
+    ],
+    "arbiter": [
+        "arbiter",
+        "ujx5M",
+        "module",
+        3
+    ],
+    "axi_interconnect_wrap_3x15": [
+        "axi_interconnect_wrap_3x15",
+        "NAwuA",
+        "module",
+        4
+    ],
+    "axi_uart_top_0000": [
+        "axi_uart_top_0000",
+        "x5KIA",
+        "module",
+        5
+    ],
+    "axi_internal_fifo_0000": [
+        "axi_internal_fifo_0000",
+        "Bvfk1",
+        "module",
+        6
+    ],
+    "axi_internal_fifo_0001": [
+        "axi_internal_fifo_0001",
+        "jTQWg",
+        "module",
+        7
+    ],
+    "tb_axi_interconnect_3x15": [
+        "tb_axi_interconnect_3x15",
+        "Qvesg",
+        "module",
+        8
+    ],
+    "...MASTER...": [
+        "SIM",
+        "amcQw",
+        "module",
+        9
+    ]
+}

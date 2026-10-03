@@ -1,0 +1,37 @@
+
+VLOGAN	= vlogan
+VLOGAN_OPT	= -full64 -sverilog +v2k -timescale=1ns/1ps -full64
+
+all :		_VCSgd_ElmsJd_1.db \
+	_VCSgd_jBAPse_1.db \
+	_VCSgd_QTXXtc_1.db \
+	_VCSgd_518uhe_1.db \
+	_VCSgd_eThKre_1.db \
+	_VCSgd_KxnGYb_1.db \
+
+
+
+_VCSgd_ElmsJd_1.db :	rtl/interconnect/priority_encoder.v 
+		${VLOGAN}  ${VLOGAN_OPT} rtl/interconnect/priority_encoder.v
+
+
+_VCSgd_jBAPse_1.db :	rtl/interconnect/arbiter.v 
+		${VLOGAN}  ${VLOGAN_OPT} rtl/interconnect/arbiter.v
+
+
+_VCSgd_QTXXtc_1.db :	rtl/interconnect/axi_interconnect.v 
+		${VLOGAN}  ${VLOGAN_OPT} rtl/interconnect/axi_interconnect.v
+
+
+_VCSgd_518uhe_1.db :	run/axi_interconnect_wrap_2x8.v 
+		${VLOGAN}  ${VLOGAN_OPT} run/axi_interconnect_wrap_2x8.v
+
+
+_VCSgd_eThKre_1.db :	tb/axi_slave_stub.v 
+		${VLOGAN}  ${VLOGAN_OPT} tb/axi_slave_stub.v
+
+
+_VCSgd_KxnGYb_1.db :	tb/tb_axi_interconnect_2x8.v 
+		${VLOGAN}  ${VLOGAN_OPT} tb/tb_axi_interconnect_2x8.v
+
+
