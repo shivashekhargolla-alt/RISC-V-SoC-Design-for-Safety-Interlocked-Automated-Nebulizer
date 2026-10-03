@@ -1,0 +1,3 @@
+./scripts/filelist
+./src/include/wdt_defines.vh
+./src/rtl/axi_wdt_top.v

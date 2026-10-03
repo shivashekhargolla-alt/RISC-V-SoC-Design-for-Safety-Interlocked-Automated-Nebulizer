@@ -1,0 +1,430 @@
+================================================================================
+  NebuCore SoC — Complete Register Map
+  All peripheral IPs, base addresses, register addresses, and bit fields
+================================================================================
+
+System clock : 100 MHz
+Reset        : Active-low (rst_n)
+Bus          : AXI4-Lite  DATA=32-bit, all registers word-aligned (4-byte steps)
+Access codes : RW = read/write   RO = read-only   WO = write-only
+               W1C = write 1 to clear   WA = write-any (any value triggers action)
+
+================================================================================
+  SUMMARY — Base Addresses
+================================================================================
+
+  IP                      | Interconnect Port | Base Address   | Size
+  ------------------------|-------------------|----------------|-------
+  UART                    | M00               | 0x1000_0000    | 16 MiB
+  Timer                   | M02               | 0x1200_0000    | 4 KiB
+  GPIO                    | M03               | 0x1300_0000    | 4 KiB
+  PWM Generator           | M04               | 0x1400_0000    | 4 KiB
+  Seven-Segment Display   | M05               | 0x1500_0000    | 4 KiB
+  Watchdog Timer          | M06               | 0x1600_0000    | 4 KiB
+
+  RAM is at 0x0000_0000 (M01, 1 GiB) — no registers, not a peripheral IP.
+
+================================================================================
+  1.  UART  —  Base: 0x1000_0000  —  M00
+================================================================================
+
+  AXI-Lite: DATA=32, ADDR=5, ID=12
+  Source  : uart/src/rtl/axi_uart_top.v  (BSC / CIC-IPN)
+  Default baud rate: 115200  (divisor = 100_000_000 / 115200 = 868)
+
+  Absolute     Offset  Name            Access  Bits     Description
+  -----------  ------  --------------  ------  -------  ----------------------------
+  0x1000_0000  0x00    RBR / THR       RW      [7:0]    Receive Buffer / Transmit
+                                                         Holding Register.
+                                                         Read  = received byte (RBR).
+                                                         Write = byte to transmit (THR).
+                                                [31:8]   Reserved.
+
+  0x1000_0004  0x04    IER             RW      [0]      RX interrupt enable.
+                                                         1 = assert uart_irq_o when
+                                                         a byte is ready in RBR.
+                                                [31:1]   Reserved.
+
+  0x1000_0008  0x08    BAUD_DIVISOR    RW      [31:0]   Baud rate divisor.
+                                                         baud = clk_freq / divisor
+                                                         Default = 868 (115200 baud
+                                                         at 100 MHz).
+
+  0x1000_000C  0x0C    LCR             RW      [1:0]    Word length (11 = 8-bit).
+                                                [2]      Stop bits: 0=1 stop, 1=2 stop.
+                                                [3]      Parity enable.
+                                                [4]      Parity mode: 0=odd, 1=even.
+                                                [7]      DLAB (divisor latch access).
+                                                [31:8]   Reserved.
+
+  0x1000_0014  0x14    LSR             RO      [0]      Data ready: 1 = byte in RBR.
+                                                [5]      THR empty: 1 = TX FIFO empty.
+                                                [6]      Transmitter empty.
+                                                [31:7]   Reserved.
+
+  Note: UART address space is 5-bit (0x00–0x1C). Only the registers above are
+  used in the NebuCore firmware. Unused offsets return 0.
+
+================================================================================
+  2.  TIMER  —  Base: 0x1200_0000  —  M02
+================================================================================
+
+  AXI-Lite: DATA=32, ADDR=4, ID=12
+  Source  : timer/src/rtl/axi_timer_top.v
+  Prescaler: 100_000_000 ticks = 1 second at 100 MHz
+
+  Absolute     Offset  Name    Access  Reset   Bits      Description
+  -----------  ------  ------  ------  ------  --------  ----------------------------
+  0x1200_0000  0x00    CTRL    RW      0x0000  [0]       timer_en
+                                                           1 = countdown active.
+                                                           0 = countdown paused.
+                                               [1]       irq_en
+                                                           1 = assert timer_irq_o
+                                                           when COUNT reaches 0.
+                                               [31:2]    Reserved (read 0).
+
+  0x1200_0004  0x04    LOAD    RW      0x0000  [15:0]    Load value in seconds.
+                                                           Writing this register
+                                                           reloads COUNT with the
+                                                           written value and clears
+                                                           the done flag.
+                                               [31:16]   Reserved (read 0).
+
+  0x1200_0008  0x08    COUNT   RO      0x0000  [15:0]    Live countdown value.
+                                                           Decrements once per second
+                                                           while timer_en=1.
+                                                           Read-only; writes ignored.
+                                               [31:16]   Reserved (read 0).
+
+  0x1200_000C  0x0C    STATUS  RW/RO   0x0000  [0]       irq_pending  (W1C)
+                                                           Set when COUNT hits 0.
+                                                           Write 1 to this bit to
+                                                           clear the pending IRQ.
+                                               [1]       done  (RO)
+                                                           Set when COUNT hits 0.
+                                                           Cleared on next LOAD write.
+                                               [31:2]    Reserved (read 0).
+
+  Non-register outputs:
+    timer_irq_o   — IRQ line to RISC-V PIC.  Active while irq_pending=1 and irq_en=1.
+    timer_done_o  — Combinational pulse. Directly wires to wdt_trigger_i in soc_top.
+                    Asserted while done=1 (i.e., while COUNT=0 and not reloaded).
+
+================================================================================
+  3.  GPIO  —  Base: 0x1300_0000  —  M03
+================================================================================
+
+  AXI-Lite: DATA=32, ADDR=4, ID=12
+  Source  : gpio/src/rtl/axi_gpio_top.v
+  Pins    : 8-bit bidirectional, per-pin direction control, IRQ-on-change
+
+  Absolute     Offset  Name  Access  Reset   Bits     Description
+  -----------  ------  ----  ------  ------  -------  ----------------------------
+  0x1300_0000  0x00    DIR   RW      0x00    [7:0]    Per-pin direction.
+                                                        1 = output (firmware drives).
+                                                        0 = input  (pad → firmware).
+                                                        Reset = 0x00 (all inputs).
+                                             [31:8]   Reserved (read 0).
+
+  0x1300_0004  0x04    OUT   RW      0x00    [7:0]    Output data register.
+                                                        Value driven on pins where
+                                                        DIR=1. Inactive pins drive 0.
+                                             [31:8]   Reserved (read 0).
+
+  0x1300_0008  0x08    IN    RO      —       [7:0]    Input data register.
+                                                        Always reflects the
+                                                        synchronised value of
+                                                        gpio_pin_i[7:0].
+                                                        Read-only; writes ignored.
+                                             [31:8]   Reserved (read 0).
+
+  0x1300_000C  0x0C    IRQ   RW/WA   0x00    [7:0]    IRQ-on-change enable.
+                                                        1 = assert gpio_irq_o on
+                                                        any edge of that input pin.
+                                                        Write any value to this
+                                                        register to clear all
+                                                        pending IRQs.
+                                             [31:8]   Reserved (read 0).
+
+  Physical signal assignments:
+    gpio_pin_oe[n] = DIR[n]              (output-enable follows direction)
+    gpio_pin_o[n]  = OUT[n] AND DIR[n]   (inactive pins forced to 0)
+    IN[n]          = synchronised gpio_pin_i[n]  (2-flop metastability guard)
+
+  Non-register output:
+    gpio_irq_o  — Level IRQ to RISC-V PIC. Active while any enabled
+                  input has an uncleared edge event.
+
+================================================================================
+  4.  PWM GENERATOR  —  Base: 0x1400_0000  —  M04
+================================================================================
+
+  AXI-Lite: DATA=32, ADDR=4, ID=12
+  Source  : pwm/src/rtl/axi_pwm_top.v
+
+  Output formula:
+    pwm_out = pwm_en  AND  (counter < (duty * period) / 256)
+                      AND  NOT pwm_force_disable_i
+
+  Absolute     Offset  Name    Access  Reset    Bits      Description
+  -----------  ------  ------  ------  -------  --------  ----------------------------
+  0x1400_0000  0x00    CTRL    RW      0x0000   [0]       pwm_en
+                                                            1 = PWM output enabled.
+                                                            Firmware must re-write
+                                                            this every Timer tick
+                                                            (heartbeat mechanism).
+                                                            A missed tick leaves
+                                                            this 0 → output silenced.
+                                                [31:1]    Reserved (read 0).
+
+  0x1400_0004  0x04    DUTY    RW      0x0080   [7:0]     Duty cycle numerator.
+                                                            0   = 0 % (output always LOW)
+                                                            128 = 50 %  (reset default)
+                                                            255 = ~100 %
+                                                [31:8]    Reserved (read 0).
+
+  0x1400_0008  0x08    PERIOD  RW      0x03E8   [15:0]    Period in clock ticks.
+                                                            Default = 1000
+                                                            → 100 kHz at 100 MHz clock.
+                                                            Minimum useful value = 2.
+                                                            Value 0 or 1 → output LOW.
+                                                [31:16]   Reserved (read 0).
+
+  0x1400_000C  0x0C    STATUS  RO      0x0000   [0]       pwm_active
+                                                            1 = pwm_en=1 and not
+                                                            force-disabled.
+                                                [1]       force_disabled
+                                                            1 = pwm_force_disable_i
+                                                            is currently asserted
+                                                            (Watchdog locked).
+                                                [31:2]    Reserved (read 0).
+
+  Non-register output:
+    pwm_out_o  — PWM waveform to external Piezo Driver.
+
+  Hardware override (internal SoC wire, not a top-level port):
+    pwm_force_disable_i ← wdt_locked_int  (combinational, zero-latency).
+    When asserted, pwm_out_o is forced LOW regardless of CTRL, DUTY, or PERIOD.
+
+================================================================================
+  5.  SEVEN-SEGMENT DISPLAY  —  Base: 0x1500_0000  —  M05
+================================================================================
+
+  AXI-Lite: DATA=32, ADDR=4, ID=12
+  Source  : seg7/src/rtl/axi_seg7_top.v
+  Digits  : 4-digit multiplexed, 4 ms per digit (400,000 cycles @ 100 MHz)
+  Blink   : 500 ms half-period (50,000,000 cycles @ 100 MHz)
+
+  Absolute     Offset  Name    Access  Reset   Bits       Description
+  -----------  ------  ------  ------  ------  ---------  ----------------------------
+  0x1500_0000  0x00    DATA    RW      0x0000  [3:0]      Digit 0  (rightmost).
+                                                            4-bit BCD/hex value.
+                                               [7:4]      Digit 1.
+                                               [11:8]     Digit 2.
+                                               [15:12]    Digit 3  (leftmost).
+                                               [31:16]    Reserved (read 0).
+
+  0x1500_0004  0x04    CTRL    RW      0x0000  [0]        disp_en
+                                                            1 = display on.
+                                                            0 = all segments off.
+                                               [1]        blink_en
+                                                            1 = display blinks at
+                                                            ~1 Hz (500 ms on/off).
+                                               [31:2]     Reserved (read 0).
+
+  0x1500_0008  0x08    STATUS  RO      0x0000  [3:0]      Current active digit index
+                                                            (0–3). Updated by the
+                                                            internal mux counter.
+                                                            Read-only.
+                                               [31:4]     Reserved (read 0).
+
+  0x1500_000C  0x0C    BRIGHT  RW      0x000F  [3:0]      Brightness level 0–15.
+                                                            15 = maximum (reset default).
+                                                            Reserved for future PWM
+                                                            dimmer; stored but not
+                                                            yet used to gate output.
+                                               [31:4]     Reserved (read 0).
+
+  Physical outputs:
+    seg_out_o[6:0]   — Segment lines {g, f, e, d, c, b, a}  (active-high).
+    digit_sel_o[3:0] — One-hot digit select. Only one bit is high at a time.
+
+  7-Segment digit encoding (DATA nibble → seg_out_o pattern):
+
+    Nibble  Char   seg_out  Segments lit        Firmware use
+    ------  -----  -------  ------------------  ----------------------
+    0x0      0     0x3F     a,b,c,d,e,f         Countdown digit
+    0x1      1     0x06     b,c                 Countdown digit
+    0x2      2     0x5B     a,b,d,e,g           Countdown digit
+    0x3      3     0x4F     a,b,c,d,g           Countdown digit
+    0x4      4     0x66     b,c,f,g             Countdown digit
+    0x5      5     0x6D     a,c,d,f,g           Countdown digit
+    0x6      6     0x7D     a,c,d,e,f,g         Countdown digit
+    0x7      7     0x07     a,b,c               Countdown digit
+    0x8      8     0x7F     all                 Countdown digit
+    0x9      9     0x6F     a,b,c,d,f,g         Countdown digit
+    0xA      A     0x77     a,b,c,e,f,g         Hex digit
+    0xB      b     0x7C     c,d,e,f,g           Hex digit
+    0xC      C     0x39     a,d,e,f             Hex digit
+    0xD      d     0x5E     b,c,d,e,g           "donE" message — dose complete
+    0xE      E     0x79     a,d,e,f,g           "donE" message — dose complete
+    0xF      n     0x37     c,e,f,g             "donE" message — dose complete
+
+  "donE" message: write DATA = 0xDonE  →  digit3=0xD, digit2=0x0, digit1=0xE, digit0=0xF
+    i.e., write 0x1500_0000 ← 0x0000_ED0F
+
+================================================================================
+  6.  WATCHDOG TIMER  —  Base: 0x1600_0000  —  M06
+================================================================================
+
+  AXI-Lite: DATA=32, ADDR=4, ID=12
+  Source  : wdt/src/rtl/axi_wdt_top.v
+  Prescaler: 100_000_000 ticks = 1 second at 100 MHz
+
+  !! SAFETY REGISTER — wdt_locked CANNOT be cleared by any register write !!
+  !! The only way to clear wdt_locked is to assert rst_n (physical reset).  !!
+
+  Absolute     Offset  Name    Access  Reset   Bits      Description
+  -----------  ------  ------  ------  ------  --------  ----------------------------
+  0x1600_0000  0x00    CTRL    RW      0x0000  [0]       wdt_en
+                                                           1 = stall detection active.
+                                                           When enabled, firmware must
+                                                           write KICK at least once
+                                                           every WINDOW seconds or the
+                                                           Watchdog locks.
+                                               [1]       irq_en
+                                                           1 = assert wdt_irq_o
+                                                           when wdt_locked is set.
+                                               [31:2]    Reserved (read 0).
+
+  0x1600_0004  0x04    WINDOW  RW      0x0005  [15:0]    Stall detection window
+                                                           in seconds.
+                                                           Default = 5 seconds.
+                                                           Firmware must write KICK
+                                                           within this window.
+                                                           Setting to 0 disables
+                                                           stall detection even when
+                                                           wdt_en=1.
+                                               [31:16]   Reserved (read 0).
+
+  0x1600_0008  0x08    KICK    WA/RO   0x0000  [31:0]    Firmware heartbeat.
+                                                           Write any value to reset
+                                                           the internal stall counter.
+                                                           Prevents stall-timeout lock.
+                                                           Read returns 0x0000_0000.
+                                                           Has no effect once
+                                                           wdt_locked=1.
+
+  0x1600_000C  0x0C    STATUS  RO      0x0000  [0]       wdt_locked  (RO, SET-ONLY)
+                                                           1 = Watchdog has locked.
+                                                           Set by timer_done or stall.
+                                                           CLEARED ONLY BY rst_n.
+                                                           No register write can
+                                                           clear this bit.
+                                               [1]       stall_detected  (RO)
+                                                           1 = stall timeout occurred.
+                                                           Contributes to wdt_locked.
+                                               [31:2]    Reserved (read 0).
+
+  Lock sources — either sets wdt_locked permanently:
+
+    Source          Condition
+    --------------- ----------------------------------------
+    wdt_trigger_i   Driven by timer_done_int (combinational
+                    wire from Timer IP inside soc_top).
+                    Fires when Timer COUNT reaches zero.
+    Stall timeout   Firmware fails to write KICK register
+                    within WINDOW seconds while wdt_en=1.
+
+  Non-register outputs:
+    wdt_locked_o  — Exposed as soc_top top-level port (read-only status).
+                    Also drives pwm_force_disable_i inside soc_top
+                    (combinational wire, zero-latency actuator disable).
+    alarm_out_o   — Direct combinational copy of wdt_locked.
+                    Drives alarm LED/buzzer.
+    wdt_irq_o     — IRQ to RISC-V PIC. Active while wdt_locked=1 and irq_en=1.
+
+================================================================================
+  CROSS-PERIPHERAL CONNECTIONS (internal soc_top wires)
+================================================================================
+
+  Signal              Source          Destination         Type
+  ------------------- --------------- ------------------- --------------------
+  timer_done_int      Timer.timer_done_o   WDT.wdt_trigger_i   Combinational assign
+  wdt_locked_int      WDT.wdt_locked_o     PWM.pwm_force_disable_i  Combinational assign
+
+  Both wires are declared as internal logic in soc_top.sv.
+  Neither is a top-level SoC port — they cannot be broken by firmware.
+  Zero clock-cycle latency from event to effect.
+
+================================================================================
+  FIRMWARE REGISTER ACCESS CHEAT SHEET  (C-style addresses)
+================================================================================
+
+  // ── UART ─────────────────────────────────────────────────────────────────
+  #define UART_BASE     0x10000000
+  #define UART_RBR_THR  (UART_BASE + 0x00)
+  #define UART_IER      (UART_BASE + 0x04)
+  #define UART_BAUD_DIV (UART_BASE + 0x08)
+  #define UART_LCR      (UART_BASE + 0x0C)
+  #define UART_LSR      (UART_BASE + 0x14)
+
+  // ── TIMER ────────────────────────────────────────────────────────────────
+  #define TIMER_BASE    0x12000000
+  #define TIMER_CTRL    (TIMER_BASE + 0x00)
+  #define TIMER_LOAD    (TIMER_BASE + 0x04)
+  #define TIMER_COUNT   (TIMER_BASE + 0x08)
+  #define TIMER_STATUS  (TIMER_BASE + 0x0C)
+
+  #define TIMER_EN      (1 << 0)
+  #define TIMER_IRQ_EN  (1 << 1)
+  #define TIMER_IRQ_CLR (1 << 0)   // write to STATUS[0]
+  #define TIMER_DONE    (1 << 1)   // read from STATUS[1]
+
+  // ── GPIO ─────────────────────────────────────────────────────────────────
+  #define GPIO_BASE     0x13000000
+  #define GPIO_DIR      (GPIO_BASE + 0x00)
+  #define GPIO_OUT      (GPIO_BASE + 0x04)
+  #define GPIO_IN       (GPIO_BASE + 0x08)
+  #define GPIO_IRQ      (GPIO_BASE + 0x0C)
+
+  // ── PWM ──────────────────────────────────────────────────────────────────
+  #define PWM_BASE      0x14000000
+  #define PWM_CTRL      (PWM_BASE + 0x00)
+  #define PWM_DUTY      (PWM_BASE + 0x04)
+  #define PWM_PERIOD    (PWM_BASE + 0x08)
+  #define PWM_STATUS    (PWM_BASE + 0x0C)
+
+  #define PWM_EN        (1 << 0)
+  #define PWM_ACTIVE    (1 << 0)   // read from STATUS[0]
+  #define PWM_FORCED    (1 << 1)   // read from STATUS[1]
+
+  // ── SEG7 ─────────────────────────────────────────────────────────────────
+  #define SEG7_BASE     0x15000000
+  #define SEG7_DATA     (SEG7_BASE + 0x00)
+  #define SEG7_CTRL     (SEG7_BASE + 0x04)
+  #define SEG7_STATUS   (SEG7_BASE + 0x08)
+  #define SEG7_BRIGHT   (SEG7_BASE + 0x0C)
+
+  #define SEG7_DISP_EN  (1 << 0)
+  #define SEG7_BLINK_EN (1 << 1)
+
+  // Display 4-digit BCD value (e.g., 0042 seconds):
+  // SEG7_DATA = (digit3 << 12) | (digit2 << 8) | (digit1 << 4) | digit0
+
+  // ── WDT ──────────────────────────────────────────────────────────────────
+  #define WDT_BASE      0x16000000
+  #define WDT_CTRL      (WDT_BASE + 0x00)
+  #define WDT_WINDOW    (WDT_BASE + 0x04)
+  #define WDT_KICK      (WDT_BASE + 0x08)
+  #define WDT_STATUS    (WDT_BASE + 0x0C)
+
+  #define WDT_EN        (1 << 0)
+  #define WDT_IRQ_EN    (1 << 1)
+  #define WDT_LOCKED    (1 << 0)   // read from STATUS[0]
+  #define WDT_STALLED   (1 << 1)   // read from STATUS[1]
+
+================================================================================
+  END OF REGISTER MAP
+  Generated for: NebuCore SoC  |  Clock: 100 MHz  |  Reset: active-low rst_n
+================================================================================

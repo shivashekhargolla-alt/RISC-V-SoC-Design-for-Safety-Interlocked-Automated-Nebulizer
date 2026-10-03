@@ -1,0 +1,3 @@
+./scripts/filelist
+./src/include/seg7_defines.vh
+./src/rtl/axi_seg7_top.v

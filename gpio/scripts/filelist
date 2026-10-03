@@ -1,0 +1,3 @@
+./scripts/filelist
+./src/include/gpio_defines.vh
+./src/rtl/axi_gpio_top.v

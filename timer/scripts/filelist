@@ -1,0 +1,3 @@
+./scripts/filelist
+./src/include/timer_defines.vh
+./src/rtl/axi_timer_top.v
