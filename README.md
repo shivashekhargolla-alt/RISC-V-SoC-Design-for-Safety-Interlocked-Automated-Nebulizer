@@ -12,6 +12,15 @@ The safety interlock lives entirely in hardware (Watchdog Timer) — a firmware 
 
 ---
 
+## 📚 Core Project Documentation
+
+* 🏛️ **[System Architecture Specification](doc/ARCHITECTURE.md)**: Full architectural breakdown, block diagrams, VeeR EL2 core, and zero-latency hardware safety interlock.
+* 🗺️ **[Master System Address & Register Map](doc/ADDRESS_MAP.md)**: Unified memory map, AXI4 interconnect ports, and complete peripheral register specifications.
+* 🧪 **[Master Verification & Test Map](doc/TEST_MAP.md)**: UVM 1.2 testbench topology, test case mapping matrix, firmware milestone markers, and coverage goals.
+* 📊 **[Full SoC Address Map Spreadsheet](doc/Full_SoC_Address_Map.ods)**: Master OpenDocument spreadsheet.
+
+---
+
 ## Repository layout
 
 ```
