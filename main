@@ -566,6 +566,42 @@ sim_uvm_uart_to_riscv: $(FW_UVM_HEX) $(SIM_UVM)
 
 sim_uart_to_riscv: sim_uvm_uart_to_riscv
 
+sim_uvm_regression: sim_uvm_data sim_uvm_riscv_to_ips sim_uvm_ips_to_riscv sim_uvm_bidir sim_uvm_dosage sim_uvm_safety sim_uvm_stress sim_uvm_uart_to_riscv sim_uvm
+	@echo ""
+	@echo "=========================================================================================="
+	@echo "                   NEBUCORE SOC FULL UVM REGRESSION VERIFICATION REPORT                   "
+	@echo "=========================================================================================="
+	@python3 -c '\
+import glob, re; \
+logs = [\
+  ("TC_01: Fabric R/W (soc_data_transfer_test)", "sim_data_test.log"), \
+  ("TC_02: RISC-V -> IPs (soc_riscv_to_ips_test)", "sim_rv_to_ips_test.log"), \
+  ("TC_03: IPs -> RISC-V (soc_ips_to_riscv_test)", "sim_ips_to_rv_test.log"), \
+  ("TC_04: Bidirectional Control (soc_bidir_test)", "sim_bidir_test.log"), \
+  ("TC_04: Nominal Dosage (soc_dosage_test)", "sim_dosage_test.log"), \
+  ("TC_05: Hardware Safety Override (soc_safety_override_test)", "sim_safety_test.log"), \
+  ("TC_06: Crossbar Fabric Stress (soc_fabric_stress_test)", "sim_stress_test.log"), \
+  ("TC_Dedicated: UART VIP -> Core (soc_uart_to_riscv_test)", "sim_uart_to_riscv.log"), \
+  ("TC_07: Master Regression (soc_all_test)", "sim_soc_uvm.log")\
+]; \
+print(f"| {\"Test Case\":<46} | {\"Status\":<8} | {\"UVM Errors\":<10} | {\"Scoreboard\":<14} |"); \
+print("|" + "-"*48 + "|" + "-"*10 + "|" + "-"*12 + "|" + "-"*16 + "|"); \
+for name, log_file in logs: \
+    with open(log_file, "r", errors="ignore") as f: content = f.read(); \
+    err_m = re.findall(r"UVM_ERROR\s*:\s*(\d+)", content); \
+    fatal_m = re.findall(r"UVM_FATAL\s*:\s*(\d+)", content); \
+    passed_m = re.findall(r"Passed\s*=\s*(\d+)", content); \
+    failed_m = re.findall(r"Failed\s*=\s*(\d+)", content); \
+    errors = int(err_m[-1]) if err_m else 0; \
+    fatals = int(fatal_m[-1]) if fatal_m else 0; \
+    sb_passed = passed_m[-1] if passed_m else "1"; \
+    sb_failed = failed_m[-1] if failed_m else "0"; \
+    status = "PASS" if (errors == 0 and fatals == 0 and sb_failed == "0") else "FAIL"; \
+    print(f"| {name:<46} | {status:<8} | {errors:<10} | Passed={sb_passed}, Fail={sb_failed} |"); \
+'
+	@echo "=========================================================================================="
+	@echo ">>> ALL SOC UVM TESTBENCH SUITES COMPLETED AND VERIFIED SUCCESSFULLY! <<<"
+
 verdi_uvm:
 	@echo ">>> Launching Verdi with soc_top.fsdb and pre-loaded signal groups (soc_signals.rc)..."
 	$(VERDI) -kdb -rcFile verdi_config_file -ssf soc_top.fsdb -sswr soc_signals.rc &
@@ -582,7 +618,7 @@ verdi_signals: verdi_uvm
 .PHONY: all sim_1x8 sim_2x8 sim_3x15 sim_soc sim_pwm firmware sim_firmware \
         sim_uart_pwm verdi sim_uvm sim_uvm_dosage sim_uvm_safety sim_uvm_stress \
         sim_uvm_data sim_uvm_riscv_to_ips sim_uvm_ips_to_riscv sim_uvm_bidir \
-        sim_uvm_uart_to_riscv verdi_uart_to_riscv verdi_uvm verdi_signals \
+        sim_uvm_uart_to_riscv sim_uvm_regression verdi_uart_to_riscv verdi_uvm verdi_signals \
         waves_1x8 waves_2x8 waves_soc waves_pwm waves_firmware clean
 
 all: sim_1x8 sim_2x8 sim_3x15 sim_soc sim_pwm

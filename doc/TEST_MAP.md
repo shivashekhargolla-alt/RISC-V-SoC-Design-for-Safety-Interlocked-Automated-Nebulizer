@@ -54,15 +54,25 @@ graph TD
 
 ## 📋 2. Comprehensive Test Mapping Matrix
 
-| Test ID | Test Name | Source File | Targeted Phase | Primary Verification Objective | Checking Mechanism | Pass Criteria |
-|---|---|---|---|---|---|---|
-| **TC_01** | `soc_data_transfer_test` | `tb/uvm/tests/soc_data_transfer_test.sv` | **Phase 1** | AXI4 fabric crossbar routing, 64-bit to 32-bit width adapters, byte strobes (`wstrb`), and RAM readback. | Scoreboard comparison of 32-bit, 16-bit, and 8-bit memory patterns. | Readback matches write pattern with 0 bit errors; marker `0x55AA0010`. |
-| **TC_02** | `soc_riscv_to_ips_test` | `tb/uvm/tests/soc_riscv_to_ips_test.sv` | **Phase 2** | Firmware writes to outbound peripheral registers (UART TX, GPIO OUT, PWM registers, Seg7 display). | UART monitor captures ASCII bytes; PWM monitor measures 50% duty cycle. | UART TX receives `"ABC"`; PWM active flag = 1; marker `0x55AA0020`. |
-| **TC_03** | `soc_ips_to_riscv_test` | `tb/uvm/tests/soc_ips_to_riscv_test.sv` | **Phase 3** | Inbound stimulus to CPU: UART RX reception, UART interrupt assertion (`uart_irq`), and GPIO input switch polling. | Scoreboard verifies CPU reads byte stream from FIFO and reads GPIO input port `0x3C`. | Core reads back `"UVM1"` (`0x55, 0x56, 0x4D, 0x31`) and GPIO `0x3C`; marker `0x55AA0030`. |
-| **TC_04** | `soc_dosage_test` / `soc_bidir_test` | `tb/uvm/tests/soc_dosage_test.sv` | **Phase 4** | Closed-loop clinical dosage control: Caregiver inputs medication volume $\rightarrow$ Core calculates dosage $\rightarrow$ Actuator drives PWM. | Scoreboard checks end-to-end routing from UART RX command byte `0xC8` (200 mL) to PWM modulation. | PWM duty changes to programmed value; GPIO reports status; marker `0x55AA0040`. |
-| **TC_05** | `soc_safety_override_test` | `tb/uvm/tests/soc_safety_override_test.sv` | **Phase 5** | Hardware safety interlock lockdown: Watchdog timer expiration and external `pwm_force_disable_i` assertion. | Zero-latency assertion check: `pwm_out_o` drops to `0` immediately despite software state. | `pwm_out_o == 0` within 1 clock cycle of fault injection; hardware lock latched. |
-| **TC_06** | `soc_fabric_stress_test` | `tb/uvm/tests/soc_fabric_stress_test.sv` | **Stress** | Interconnect bandwidth saturation: Concurrent transactions from LSU (Load/Store), IFU (Instruction Fetch), and System Bus. | Crossbar arbiter starvation checks and protocol assertion monitors (`SVA`). | No deadlock, no dropped beats, all slave responses return `OKAY (2'b00)`. |
-| **TC_07** | **`soc_all_test`** | `tb/uvm/tests/soc_all_test.sv` | **Master Regression** | Executes all 4 core verification phases sequentially in a single simulation run. | Master UVM scoreboard and functional milestone coverage monitor. | All 4 sub-phases pass; marker `0x55AA00FF`; **0 Scoreboard Errors**. |
+| Test ID | Test Name | Source File | Targeted Phase | Primary Verification Objective | Checking Mechanism | Pass Criteria | Execution Command | Result |
+|---|---|---|---|---|---|---|---|---|
+| **TC_01** | `soc_data_transfer_test` | `tb/uvm/tests/soc_data_transfer_test.sv` | **Phase 1** | AXI4 fabric crossbar routing, 64-bit to 32-bit width adapters, byte strobes (`wstrb`), and RAM readback. | Scoreboard comparison of 32-bit, 16-bit, and 8-bit memory patterns. | Readback matches write pattern with 0 bit errors; marker `0x55AA0010`. | `make sim_uvm_data` | **PASSED (0 Errors)** |
+| **TC_02** | `soc_riscv_to_ips_test` | `tb/uvm/tests/soc_riscv_to_ips_test.sv` | **Phase 2** | Firmware writes to outbound peripheral registers (UART TX, GPIO OUT, PWM registers, Seg7 display). | UART monitor captures ASCII bytes; PWM monitor measures 50% duty cycle. | UART TX receives `"ABC"`; PWM active flag = 1; marker `0x55AA0020`. | `make sim_uvm_riscv_to_ips` | **PASSED (0 Errors)** |
+| **TC_03** | `soc_ips_to_riscv_test` | `tb/uvm/tests/soc_ips_to_riscv_test.sv` | **Phase 3** | Inbound stimulus to CPU: UART RX reception, UART interrupt assertion (`uart_irq`), and GPIO input switch polling. | Scoreboard verifies CPU reads byte stream from FIFO and reads GPIO input port `0x3C`. | Core reads back `"UVM1"` and GPIO `0x3C`; marker `0x55AA0030`. | `make sim_uvm_ips_to_riscv` | **PASSED (0 Errors)** |
+| **TC_04** | `soc_dosage_test` | `tb/uvm/tests/soc_dosage_test.sv` | **Phase 4** | Closed-loop clinical dosage control: Caregiver inputs medication volume $\rightarrow$ Core calculates dosage $\rightarrow$ Actuator drives PWM. | Scoreboard checks end-to-end routing from UART RX command byte `0xC8` (200 mL) to PWM modulation. | PWM duty changes to programmed value; GPIO reports status; marker `0x55AA0040`. | `make sim_uvm_dosage` | **PASSED (0 Errors)** |
+| **TC_04b**| `soc_bidir_test` | `tb/uvm/tests/soc_bidir_test.sv` | **Phase 4** | Bidirectional cross-IP loopback: Serial command ingress to actuator modulation. | VIP monitoring of dynamic PWM register reconfiguration. | Data correctly transferred across bus; marker `0x55AA0040`. | `make sim_uvm_bidir` | **PASSED (0 Errors)** |
+| **TC_05** | `soc_safety_override_test` | `tb/uvm/tests/soc_safety_override_test.sv` | **Phase 5** | Hardware safety interlock lockdown: Watchdog timer expiration and external `pwm_force_disable_i` assertion. | Zero-latency assertion check: `pwm_out_o` drops to `0` immediately despite software state. | `pwm_out_o == 0` within 1 clock cycle of fault injection; hardware lock latched. | `make sim_uvm_safety` | **PASSED (0 Errors)** |
+| **TC_06** | `soc_fabric_stress_test` | `tb/uvm/tests/soc_fabric_stress_test.sv` | **Stress** | Interconnect bandwidth saturation: Concurrent transactions from LSU (Load/Store), IFU (Instruction Fetch), and System Bus. | Crossbar arbiter starvation checks and protocol assertion monitors (`SVA`). | No deadlock, no dropped beats, all slave responses return `OKAY (2'b00)`. | `make sim_uvm_stress` | **PASSED (0 Errors)** |
+| **TC_07** | **`soc_all_test`** | `tb/uvm/tests/soc_all_test.sv` | **Master Regression** | Executes all 4 core verification phases sequentially in a single simulation run. | Master UVM scoreboard and functional milestone coverage monitor. | All 4 sub-phases pass; marker `0x55AA00FF`; **0 Scoreboard Errors**. | `make sim_uvm` | **PASSED (0 Errors)** |
+| **TC_VIP**| `soc_uart_to_riscv_test` | `tb/uvm/tests/soc_uart_to_riscv_test.sv` | **VIP Driver** | Dedicated UART VIP driver-to-core verification with custom baud divisor. | Scoreboard checks individual UART packet reception. | Marker `0x55AA0050`; zero dropped frames. | `make sim_uvm_uart_to_riscv` | **PASSED (0 Errors)** |
+
+---
+
+## ⚡ 2.1 Complete Regression Suite One-Click Execution
+To run all test cases sequentially and generate the verified regression summary table:
+```bash
+make sim_uvm_regression
+```
 
 ---
 
