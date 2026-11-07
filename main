@@ -584,8 +584,9 @@ logs = [\
   ("TC_Dedicated: UART VIP -> Core (soc_uart_to_riscv_test)", "sim_uart_to_riscv.log"), \
   ("TC_07: Master Regression (soc_all_test)", "sim_soc_uvm.log")\
 ]; \
-print(f"| {\"Test Case\":<46} | {\"Status\":<8} | {\"UVM Errors\":<10} | {\"Scoreboard\":<14} |"); \
-print("|" + "-"*48 + "|" + "-"*10 + "|" + "-"*12 + "|" + "-"*16 + "|"); \
+col_t = "Test Case"; col_s = "Status"; col_e = "UVM Errors"; col_sb = "Scoreboard"; \
+print("| %-46s | %-8s | %-10s | %-16s |" % (col_t, col_s, col_e, col_sb)); \
+print("|" + "-"*48 + "|" + "-"*10 + "|" + "-"*12 + "|" + "-"*18 + "|"); \
 for name, log_file in logs: \
     with open(log_file, "r", errors="ignore") as f: content = f.read(); \
     err_m = re.findall(r"UVM_ERROR\s*:\s*(\d+)", content); \
@@ -597,7 +598,8 @@ for name, log_file in logs: \
     sb_passed = passed_m[-1] if passed_m else "1"; \
     sb_failed = failed_m[-1] if failed_m else "0"; \
     status = "PASS" if (errors == 0 and fatals == 0 and sb_failed == "0") else "FAIL"; \
-    print(f"| {name:<46} | {status:<8} | {errors:<10} | Passed={sb_passed}, Fail={sb_failed} |"); \
+    sb_str = "Passed=" + str(sb_passed) + ", Fail=" + str(sb_failed); \
+    print("| %-46s | %-8s | %-10d | %-16s |" % (name, status, errors, sb_str)); \
 '
 	@echo "=========================================================================================="
 	@echo ">>> ALL SOC UVM TESTBENCH SUITES COMPLETED AND VERIFIED SUCCESSFULLY! <<<"
