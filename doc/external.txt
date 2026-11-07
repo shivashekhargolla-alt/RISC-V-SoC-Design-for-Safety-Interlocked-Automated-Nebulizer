@@ -1,0 +1,320 @@
+================================================================================
+  NebuCore SoC — EXTERNAL VERIFICATION TEST PLAN & SIGNAL SPECIFICATION
+  Classification: Off-Chip Signals, Package Pins, and Physical Interfaces
+================================================================================
+
+Target SoC : NebuCore Safety-Interlocked Automated Nebulizer SoC
+Core       : RISC-V VeeR EL2 Processor Core
+Fabric     : AXI4 3-Master x 15-Slave Interconnect
+Scope      : Primary chip I/O ports, package boundary pins, physical sensors,
+             caregiver input switches, physical display segments, piezo driver
+             actuation pins, buzzer/alarm outputs, and external serial ports.
+Rule       : Any signal that crosses the SoC boundary to/from the external board,
+             actuator, display, or host environment is strictly EXTERNAL.
+
+================================================================================
+1. EXTERNAL SIGNAL CATALOG (CHIP I/O & PACKAGE PADS)
+================================================================================
+
+--------------------------------------------------------------------------------
+1.1 Power, Clock, and Reset Boundary Pins
+--------------------------------------------------------------------------------
+Pin Name           Dir.   Width   Physical Connection         Electrical / Functional Description
+------------------ ------ ------- --------------------------- --------------------------------------------------
+clk                Input  1-bit   100 MHz Crystal Oscillator  Primary system master clock input (10.0 ns period).
+rst_n              Input  1-bit   Manual Reset Pushbutton     Active-low master physical reset. The ONLY mechanism
+                                                              capable of clearing a latched Watchdog lock.
+rst_vec[31:1]      Input  31-bit  Boot Address Straps / Flash Default reset vector entry point (e.g. 0x0000_0000).
+
+--------------------------------------------------------------------------------
+1.2 Human Machine Interface (Caregiver Inputs & Diagnostics)
+--------------------------------------------------------------------------------
+Pin Name           Dir.   Width   Physical Connection         Electrical / Functional Description
+------------------ ------ ------- --------------------------- --------------------------------------------------
+gpio_pin_i[7:0]    Input  8-bit   Volume Entry DIP Switches / Caregiver-selected liquid dosage in mL (0 to 255 mL).
+                                  Rotary Dial / Keypad        Synchronized internally via 2-stage flops.
+uart_rx_i          Input  1-bit   USB-UART Bridge / Host PC   Asynchronous serial receive line for host calibration
+                                                              and diagnostic commanding (3.3V LVCMOS / 8N1).
+
+--------------------------------------------------------------------------------
+1.3 Actuator, Safety, and Visual Display Output Pins
+--------------------------------------------------------------------------------
+Pin Name           Dir.   Width   Physical Connection         Electrical / Functional Description
+------------------ ------ ------- --------------------------- --------------------------------------------------
+pwm_out_o          Output 1-bit   Piezoelectric Transducer    High-frequency digital drive waveform (100 kHz nominal).
+                                  Analog Gate Driver          Delivers acoustic aerosolization. Clamped strictly to
+                                                              0V with ZERO latency upon dosage completion or fault.
+
+seg_out_o[6:0]     Output 7-bit   4-Digit 7-Segment LED       Cathode/Anode segment lines {g, f, e, d, c, b, a}.
+                                  Display Module              Displays live countdown seconds and "donE" message.
+
+digit_sel_o[3:0]   Output 4-bit   7-Segment Multiplex Anodes  One-hot active-high/low digit enable strobes.
+                                                              Rotates across the 4 digits at ~250 Hz (4 ms per digit).
+
+alarm_out_o        Output 1-bit   Piezo Buzzer / Warning LED  Active-high safety alarm output. Asserts continuously
+                                                              when Watchdog locks or unhandled stall occurs.
+
+uart_tx_o          Output 1-bit   USB-UART Bridge / Host PC   Asynchronous serial transmit line (115200 baud, 8N1).
+                                                              Emits real-time dosage logs and fault telemetry.
+
+gpio_pin_o[7:0]    Output 8-bit   Expansion Header            General purpose outputs driven by firmware.
+gpio_pin_oe[7:0]   Output 8-bit   Pad Direction Controls      Tri-state buffer enables for GPIO bi-directional pads.
+
+--------------------------------------------------------------------------------
+1.4 Memory & Debug Probe Boundary Interfaces
+--------------------------------------------------------------------------------
+Pin Name           Dir.   Width   Physical Connection         Electrical / Functional Description
+------------------ ------ ------- --------------------------- --------------------------------------------------
+m01_awid / awaddr  Output Bus     External SRAM / DRAM Module 64-bit external memory interface (when external memory
+m01_wdata / wstrb  Output Bus     (AXI4 64-bit Port)          model is attached for program boot and data buffers).
+m01_bready / bid   I/O    Bus
+m01_araddr / arid  Output Bus
+m01_rdata / rresp  Input  Bus
+
+trace_rv_i_*       Output Bus     RISC-V Hardware Trace Probe Instruction commit trace (PC, opcode, status) for
+                                  (e.g., Lauterbach / J-Link) external hardware-in-the-loop validation.
+
+
+================================================================================
+2. EXTERNAL TEST PLAN MATRIX (CHIP I/O & PHYSICAL INTERFACE VERIFICATION)
+================================================================================
+
+--------------------------------------------------------------------------------
+2.1 External Actuation & Safety Output Verification (Piezo & Alarm Pins)
+--------------------------------------------------------------------------------
+
+Test ID       : TC_EXT_PWM_01
+Test Name     : Piezo Actuator Output Waveform Frequency & Duty Cycle Accuracy
+External Pins : pwm_out_o, clk
+Stimulus      : Drive clk at 100 MHz. Program DUTY=64 (25%), 128 (50%), 192 (75%)
+                with PERIOD=1000 via internal register commands.
+Measurement   : Measure high time, low time, and cycle period on external pin pwm_out_o.
+Pass Criteria : Frequency equals exactly 100 kHz (10.0 us period +/- 10 ns).
+                Measured duty cycle strictly matches within +/- 1 clock cycle of
+                theoretical target: floor((DUTY * PERIOD) / 256).
+Severity      : High
+
+Test ID       : TC_EXT_PWM_02
+Test Name     : Piezo Actuator Immediate Clamping on Dosage Expiry
+External Pins : pwm_out_o, alarm_out_o
+Stimulus      : Run dosage countdown to 0. Monitor pwm_out_o and alarm_out_o simultaneously.
+Measurement   : Measure propagation delay from the final countdown second expiry to
+                the transition of pwm_out_o to steady 0V (logic 0).
+Pass Criteria : pwm_out_o drops to 0V immediately without finishing any partial pulse;
+                no runt pulses; alarm_out_o asserts high concurrently.
+Severity      : Critical
+
+Test ID       : TC_EXT_PWM_03
+Test Name     : Post-Lockout Actuator Pad Silence Proof
+External Pins : pwm_out_o, rst_n
+Stimulus      : Following dosage completion (WDT locked), execute hostile firmware loops
+                attempting to toggle PWM registers or write maximum duty cycle.
+Measurement   : Probe pwm_out_o with high-speed digital oscilloscope / logic analyzer.
+Pass Criteria : pwm_out_o remains strictly at 0V (GND level) continuously.
+                No glitches, transients, or runt pulses occur on the physical pad.
+Severity      : Critical
+
+Test ID       : TC_EXT_ALM_01
+Test Name     : External Buzzer & LED Alarm Activation on Safety Lockout
+External Pins : alarm_out_o, rst_n
+Stimulus      : Induce a Watchdog lockout via (a) normal countdown expiry, or (b) CPU stall.
+Measurement   : Monitor voltage state on external alarm_out_o pin.
+Pass Criteria : alarm_out_o transitions cleanly to logic HIGH (3.3V) and stays permanently
+                asserted until physical rst_n is activated.
+Severity      : Critical
+
+--------------------------------------------------------------------------------
+2.2 Caregiver Input & External Pushbutton Verification (Switches & Reset)
+--------------------------------------------------------------------------------
+
+Test ID       : TC_EXT_SW_01
+Test Name     : Caregiver Volume Entry DIP Switch Sampling (Nominal 5 mL)
+External Pins : gpio_pin_i[7:0], seg_out_o[6:0], digit_sel_o[3:0]
+Stimulus      : Set external DIP switches to 8'h05 (5 mL). Release rst_n.
+Measurement   : Observe treatment duration and display outputs triggered by input setting.
+Pass Criteria : System correctly interprets 5 mL input; converts to exact duration
+                (e.g., 15 seconds) on 7-segment display; initiates PWM actuation.
+Severity      : High
+
+Test ID       : TC_EXT_SW_02
+Test Name     : Boundary & Out-of-Range Volume Switch Inputs
+External Pins : gpio_pin_i[7:0], pwm_out_o, seg_out_o[6:0]
+Stimulus      : 1. Drive gpio_pin_i = 8'h00 (0 mL).
+                2. In a subsequent test, drive gpio_pin_i = 8'hFF (255 mL, beyond max allowable).
+Measurement   : Monitor pwm_out_o and 7-segment display patterns.
+Pass Criteria : - For 0 mL: Actuator output pwm_out_o remains completely silent (0V);
+                  display outputs error code "Err0".
+                - For 255 mL: Input is rejected or clamped to safe maximum dose without
+                  arithmetic overflow in countdown calculation.
+Severity      : High
+
+Test ID       : TC_EXT_SW_03
+Test Name     : Switch Contact Bounce & Asynchronous Metastability Immunity
+External Pins : gpio_pin_i[7:0], clk
+Stimulus      : Inject asynchronous transition edges with random jitter, setup/hold
+                violations, and contact bounce noise (< 50 ns glitches) on gpio_pin_i pins.
+Measurement   : Verify internal sampled state and ensure no core crash or latchup occurs.
+Pass Criteria : Internal synchronizer eliminates metastability; input settles to valid
+                stable value without false multi-triggering.
+Severity      : High
+
+Test ID       : TC_EXT_RST_01
+Test Name     : Physical Pushbutton Reset Assertion & Recovery
+External Pins : rst_n, pwm_out_o, alarm_out_o, digit_sel_o[3:0]
+Stimulus      : While system is locked in alarm state (alarm_out_o=1), assert rst_n LOW
+                for 20 clock cycles, then release HIGH.
+Measurement   : Observe system state on all output pins post-deassertion.
+Pass Criteria : alarm_out_o de-asserts to 0V; system re-enters initial boot state;
+                display resets to default standby; ready for new treatment cycle.
+Severity      : Critical
+
+Test ID       : TC_EXT_RST_02
+Test Name     : Reset Pin Narrow Glitch & Electrical Noise Invalidation
+External Pins : rst_n, pwm_out_o, clk
+Stimulus      : While treatment is actively running (pwm_out_o toggling), inject a narrow
+                spurious negative glitch (< 2 ns, less than half clock cycle) on rst_n.
+Measurement   : Monitor pwm_out_o and system operational continuity.
+Pass Criteria : Narrow electrical glitch does not cause partial state corruption, false
+                lockup, or runaway actuation; glitch is filtered or synchronously absorbed.
+Severity      : Critical
+
+--------------------------------------------------------------------------------
+2.3 Visual Display Output Verification (7-Segment Display Pins)
+--------------------------------------------------------------------------------
+
+Test ID       : TC_EXT_SEG_01
+Test Name     : 4-Digit Multiplexed Time-Division Scanning & Non-Overlap
+External Pins : digit_sel_o[3:0], seg_out_o[6:0]
+Stimulus      : Enable display with non-zero countdown data.
+Measurement   : Measure active pulse duration and transition deadtime across digit_sel_o[3:0].
+Pass Criteria : Exactly ONE digit enable is active at any instant (strict one-hot).
+                Active time per digit equals 4.0 ms +/- 1% (400,000 clock cycles @ 100 MHz).
+                Zero ghosting or overlap between consecutive digit selections.
+Severity      : High
+
+Test ID       : TC_EXT_SEG_02
+Test Name     : Segment Pattern Decoding Accuracy (0 to 9)
+External Pins : seg_out_o[6:0], digit_sel_o[3:0]
+Stimulus      : Drive countdown data representing numerals 0 through 9.
+Measurement   : Probe segment bus seg_out_o[6:0] = {g, f, e, d, c, b, a}.
+Pass Criteria : Measured segment logic levels strictly match 7-segment character map:
+                '0' = 7'b0111111 (0x3F)
+                '1' = 7'b0000110 (0x06)
+                '2' = 7'b1011011 (0x5B)
+                '3' = 7'b1001111 (0x4F)
+                '4' = 7'b1100110 (0x66)
+                '5' = 7'b1101101 (0x6D)
+                '6' = 7'b1111101 (0x7D)
+                '7' = 7'b0000111 (0x07)
+                '8' = 7'b1111111 (0x7F)
+                '9' = 7'b1101111 (0x6F)
+Severity      : High
+
+Test ID       : TC_EXT_SEG_03
+Test Name     : Dose Completion Visual Indicator ("donE" Display Message)
+External Pins : seg_out_o[6:0], digit_sel_o[3:0]
+Stimulus      : Complete dosage countdown to zero.
+Measurement   : Capture decoded patterns on all 4 multiplexed digits.
+Pass Criteria : Display sequentially renders:
+                Digit 3 (leftmost) : 'd' -> 7'b1011110 (0x5E)
+                Digit 2            : 'o' -> 7'b0111111 (0x3F) or 7'b1011100 (0x5C)
+                Digit 1            : 'n' -> 7'b0110111 (0x37)
+                Digit 0 (rightmost): 'E' -> 7'b1111001 (0x79)
+Severity      : High
+
+Test ID       : TC_EXT_SEG_04
+Test Name     : Display Blink Modulation Feature
+External Pins : seg_out_o[6:0], digit_sel_o[3:0]
+Stimulus      : Enable display blink mode (CTRL.blink_en=1).
+Measurement   : Measure on/off periodicity of segment drive lines.
+Pass Criteria : Display alternates between active illuminated data and all-dark blanking
+                at a 1.0 Hz cadence (500 ms illuminated / 500 ms dark).
+Severity      : Medium
+
+--------------------------------------------------------------------------------
+2.4 Host Serial Communication Verification (UART Pins)
+--------------------------------------------------------------------------------
+
+Test ID       : TC_EXT_UART_01
+Test Name     : UART Physical 8N1 Bit Framing & Baud Rate Timing (115200 Baud)
+External Pins : uart_tx_o, clk
+Stimulus      : Transmit test ASCII byte stream (0x55, 0xAA, "OK\n") from SoC firmware.
+Measurement   : Measure bit duration, start bit (logic 0), 8 data bits (LSB first),
+                and stop bit (logic 1) on external pin uart_tx_o.
+Pass Criteria : Bit duration equals 8.68 us +/- 1% (868 clock cycles @ 100 MHz).
+                Proper start and stop bit framing without parity or framing errors.
+Severity      : High
+
+Test ID       : TC_EXT_UART_02
+Test Name     : End-to-End Serial Treatment Logging Telemetry
+External Pins : uart_tx_o, gpio_pin_i[7:0], pwm_out_o
+Stimulus      : Execute complete dosage run from 5 mL setting to countdown completion.
+Measurement   : Capture UART byte stream on external serial receiver terminal.
+Pass Criteria : Correct ASCII log strings received cleanly:
+                "DOSE START: 5mL\r\n" at initiation;
+                "DOSE COMPLETE\r\n" upon countdown expiry.
+Severity      : Medium
+
+--------------------------------------------------------------------------------
+2.5 Full SoC Physical End-to-End System Integration Test
+--------------------------------------------------------------------------------
+
+Test ID       : TC_EXT_SOC_01
+Test Name     : Full-Chip Nominal Treatment Cycle via Physical Interfaces
+External Pins : rst_n, clk, gpio_pin_i[7:0], pwm_out_o, seg_out_o[6:0],
+                digit_sel_o[3:0], alarm_out_o, uart_tx_o
+Stimulus      : 1. Apply clk (100 MHz) and pulse rst_n.
+                2. Set volume switches gpio_pin_i = 8'h05 (5 mL).
+                3. Allow system to execute full 15-second treatment.
+Pass Criteria : - System boots cleanly from external reset.
+                - UART transmits "DOSE START: 5mL".
+                - pwm_out_o drives 100 kHz 50% duty waveform for exactly 15 seconds.
+                - 7-segment display counts down: 0015 -> 0014 -> ... -> 0000.
+                - At 0000: pwm_out_o drops to 0V instantly; alarm_out_o activates;
+                  display reads "donE"; UART emits "DOSE COMPLETE".
+                - Subsequent manipulation of switches does not restart actuator
+                  without an explicit external rst_n button press.
+Severity      : Critical
+
+
+================================================================================
+3. EXTERNAL SIGNAL SYSTEMVERILOG ASSERTIONS (SVA)
+================================================================================
+
+The following formal properties monitor external chip pins during top-level
+testbench simulation:
+
+// Property 1: Actuator output pin MUST be 0 whenever Watchdog is locked
+property p_ext_pwm_low_when_wdt_locked;
+    @(posedge clk)
+    (alarm_out_o == 1'b1) |-> (pwm_out_o == 1'b0);
+endproperty
+assert property (p_ext_pwm_low_when_wdt_locked)
+    else $fatal(1, "[EXTERNAL HAZARD] pwm_out_o is HIGH while alarm_out_o is active!");
+
+// Property 2: 7-segment digit select lines must remain strictly one-hot
+property p_ext_digit_sel_onehot;
+    @(posedge clk) disable iff (!rst_n)
+    $onehot0(digit_sel_o);
+endproperty
+assert property (p_ext_digit_sel_onehot)
+    else $error("[ELECTRICAL HAZARD] Multiple digit select lines active simultaneously!");
+
+// Property 3: Reset deassertion must initialize actuator output to safe LOW
+property p_ext_reset_pwm_default_low;
+    @(posedge clk)
+    (!rst_n) |-> (pwm_out_o == 1'b0);
+endproperty
+assert property (p_ext_reset_pwm_default_low)
+    else $fatal(1, "[SAFETY HAZARD] pwm_out_o asserted during system reset!");
+
+
+================================================================================
+4. EXTERNAL SIGN-OFF & PHYSICAL ACCEPTANCE CRITERIA
+================================================================================
+1. Pad Toggle Coverage: 100% toggle coverage on all primary chip I/O pins.
+2. Waveform Timing: pwm_out_o frequency stable at 100 kHz within +/- 1% tolerance.
+3. Electrical Silence: 0V confirmed on pwm_out_o during reset and post-lockout.
+4. Optical Verification: 7-segment and alarm pins confirmed functional in GUI/VCD.
+5. Serial Framing: 0 framing or baud timing errors detected over 1,000 transmitted bytes.
+================================================================================

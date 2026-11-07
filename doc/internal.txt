@@ -1,0 +1,411 @@
+================================================================================
+  NebuCore SoC — INTERNAL VERIFICATION TEST PLAN & SIGNAL SPECIFICATION
+  Classification: Module-to-Module Connections Inside the SoC
+================================================================================
+
+Target SoC : NebuCore Safety-Interlocked Automated Nebulizer SoC
+Core       : RISC-V VeeR EL2 Processor (LSU, IFU, SB Masters)
+Fabric     : AXI4 3-Master x 15-Slave Crossbar Interconnect (64-bit / 32-bit)
+Scope      : Purely internal signals, module-to-module inter-IP interfaces,
+             AXI bus channels, cross-peripheral safety interlocks, PIC interrupt
+             lines, internal registers, and stub error responders.
+Rule       : If a signal is inside the SoC connection from module to module,
+             it is strictly INTERNAL.
+
+================================================================================
+1. INTERNAL SIGNAL CATALOG (MODULE-TO-MODULE CONNECTIONS)
+================================================================================
+
+--------------------------------------------------------------------------------
+1.1 Hardwired Cross-Peripheral Safety Interlocks (Zero-Latency Internal Wires)
+--------------------------------------------------------------------------------
+Signal Name        Width  Source Module      Destination Module  Description
+------------------ ------ ------------------ ------------------  --------------------------------------------------
+timer_done_int     1-bit  Timer IP           Watchdog Timer IP   Direct combinational wire connecting
+                          (axi_timer_top)    (axi_wdt_top)       timer_done_o to wdt_trigger_i. Fires
+                                                                 instantly when countdown hits 0 (dose complete).
+
+wdt_locked_int     1-bit  Watchdog Timer IP  PWM Generator IP    Direct combinational wire connecting
+                          (axi_wdt_top)      (axi_pwm_top)       wdt_locked_o to pwm_force_disable_i.
+                                                                 Forces PWM output to 0V combinationally with
+                                                                 zero clock-cycle latency upon lock.
+
+--------------------------------------------------------------------------------
+1.2 Core Interrupt Lines (Peripheral IPs to RISC-V PIC Controller)
+--------------------------------------------------------------------------------
+Signal Name        Width  Source Module      Destination Module  Description
+------------------ ------ ------------------ ------------------  --------------------------------------------------
+timer_irq_o        1-bit  Timer IP           RISC-V Core (PIC)   Periodic 1-second tick & dose completion IRQ.
+                                             (irq_timer_done)    Notifies CPU to update countdown display.
+
+wdt_irq_o          1-bit  Watchdog Timer IP  RISC-V Core (PIC)   Watchdog lockout / CPU stall IRQ. Informs
+                                             (irq_wdt)           firmware of hardware shutdown event.
+
+gpio_irq_o         1-bit  GPIO IP            RISC-V Core (PIC)   IRQ-on-change event when caregiver toggles
+                                             (gpio_irq)          volume entry switch pins mid-operation.
+
+uart_irq_o         1-bit  UART IP            RISC-V Core (PIC)   RX FIFO data ready / TX FIFO empty interrupt
+                                             (uart_irq)          for asynchronous console communication.
+
+--------------------------------------------------------------------------------
+1.3 Processor Master Interfaces to AXI4 Interconnect (Core -> Crossbar)
+--------------------------------------------------------------------------------
+Signal Name        Width  Source Module      Destination Module  Description
+------------------ ------ ------------------ ------------------  --------------------------------------------------
+s00_axi_aw*        Bus    RISC-V Core (LSU)  Interconnect (S00)  Load-Store Unit write address channel:
+                          (el2_veer_wrapper) (axi_interconnect)  awid[3:0], awaddr[31:0], awlen[7:0],
+                                                                 awsize[2:0], awburst[1:0], awvalid, awready.
+
+s00_axi_w*         Bus    RISC-V Core (LSU)  Interconnect (S00)  LSU write data channel:
+                                                                 wdata[63:0], wstrb[7:0], wlast, wvalid, wready.
+
+s00_axi_b*         Bus    Interconnect (S00) RISC-V Core (LSU)   LSU write response channel:
+                                                                 bid[3:0], bresp[1:0], bvalid, bready.
+
+s00_axi_ar*        Bus    RISC-V Core (LSU)  Interconnect (S00)  LSU read address channel:
+                                                                 arid[3:0], araddr[31:0], arlen[7:0],
+                                                                 arsize[2:0], arburst[1:0], arvalid, arready.
+
+s00_axi_r*         Bus    Interconnect (S00) RISC-V Core (LSU)   LSU read data channel:
+                                                                 rid[3:0], rdata[63:0], rresp[1:0],
+                                                                 rlast, rvalid, rready.
+
+s01_axi_ar*        Bus    RISC-V Core (IFU)  Interconnect (S01)  Instruction Fetch Unit read address channel:
+                                                                 arid[3:0], araddr[31:0], arlen[7:0],
+                                                                 arsize[2:0], arburst[1:0], arvalid, arready.
+
+s01_axi_r*         Bus    Interconnect (S01) RISC-V Core (IFU)   IFU read data channel:
+                                                                 rid[3:0], rdata[63:0], rresp[1:0],
+                                                                 rlast, rvalid, rready.
+
+s02_axi_aw/w/b/ar/r Bus   RISC-V Core (SB)   Interconnect (S02)  System Bus / Debug Unit full read/write
+                                                                 channels for debug probe / memory access.
+
+--------------------------------------------------------------------------------
+1.4 AXI4 Interconnect to Width Adapters (64-bit Crossbar -> 32-bit Adapters)
+--------------------------------------------------------------------------------
+Signal Name        Width  Source Module      Destination Module  Description
+------------------ ------ ------------------ ------------------  --------------------------------------------------
+m00_ic_axi_*       Bus    Interconnect (M00) Width Adapter 0     64-bit AXI4 slave port for UART address window.
+m02_ic_axi_*       Bus    Interconnect (M02) Width Adapter 2     64-bit AXI4 slave port for Timer address window.
+m03_ic_axi_*       Bus    Interconnect (M03) Width Adapter 3     64-bit AXI4 slave port for GPIO address window.
+m04_ic_axi_*       Bus    Interconnect (M04) Width Adapter 4     64-bit AXI4 slave port for PWM address window.
+m05_ic_axi_*       Bus    Interconnect (M05) Width Adapter 5     64-bit AXI4 slave port for 7-Seg address window.
+m06_ic_axi_*       Bus    Interconnect (M06) Width Adapter 6     64-bit AXI4 slave port for WDT address window.
+
+--------------------------------------------------------------------------------
+1.5 Width Adapters to Peripheral IPs (32-bit AXI-Lite Module Busses)
+--------------------------------------------------------------------------------
+Signal Name        Width  Source Module      Destination Module  Description
+------------------ ------ ------------------ ------------------  --------------------------------------------------
+axi_awaddr         32-bit Width Adapter      Target Peripheral   Registered write address to peripheral registers.
+axi_awvalid/ready  1-bit  Width Adapter/IP   Target IP / Adapter Write address handshake pair.
+axi_wdata          32-bit Width Adapter      Target Peripheral   32-bit write data steered to active byte lanes.
+axi_wstrb          4-bit  Width Adapter      Target Peripheral   Byte write enable strobes [3:0].
+axi_wvalid/ready   1-bit  Width Adapter/IP   Target IP / Adapter Write data handshake pair.
+axi_bresp          2-bit  Target Peripheral  Width Adapter       Write completion response (OKAY, SLVERR).
+axi_bvalid/ready   1-bit  IP / Width Adapter Adapter / IP        Write response handshake pair.
+axi_araddr         32-bit Width Adapter      Target Peripheral   Registered read address to peripheral registers.
+axi_arvalid/ready  1-bit  Width Adapter/IP   Target IP / Adapter Read address handshake pair.
+axi_rdata          32-bit Target Peripheral  Width Adapter       32-bit read data returned from peripheral register.
+axi_rresp          2-bit  Target Peripheral  Width Adapter       Read response status (OKAY, SLVERR).
+axi_rvalid/ready   1-bit  IP / Width Adapter Adapter / IP        Read data handshake pair.
+
+--------------------------------------------------------------------------------
+1.6 Unmapped Stub Error Slave Interfaces (Interconnect Ports M07 to M14)
+--------------------------------------------------------------------------------
+Signal Name        Width  Source Module      Destination Module  Description
+------------------ ------ ------------------ ------------------  --------------------------------------------------
+m07_m14_axi_bresp  2-bit  Stub Slave Models  Interconnect        Hardwired 2'b10 (SLVERR) or 2'b11 (DECERR)
+                                                                 terminator for unmapped peripheral regions.
+m07_m14_axi_rresp  2-bit  Stub Slave Models  Interconnect        Returns decode error without stalling AXI fabric.
+
+--------------------------------------------------------------------------------
+1.7 Internal Peripheral Memory-Mapped Registers (Internal Bus-Accessible State)
+--------------------------------------------------------------------------------
+Peripheral Module  Register Name  Offset   Width   Access  Internal Function
+------------------ -------------- -------- ------- ------- --------------------------------------------------
+UART (M00)         RBR / THR      0x00     8-bit   RW      Internal RX buffer / TX holding register.
+UART (M00)         IER            0x04     1-bit   RW      RX interrupt enable configuration.
+UART (M00)         BAUD_DIVISOR   0x08     32-bit  RW      Clock divider counter register (default 868).
+UART (M00)         LCR            0x0C     8-bit   RW      Line control framing configuration.
+UART (M00)         LSR            0x14     8-bit   RO      FIFO status flags (Data Ready, THR Empty).
+Timer (M02)        CTRL           0x00     2-bit   RW      bit 0: timer_en, bit 1: irq_en.
+Timer (M02)        LOAD           0x04     16-bit  RW      Target countdown value loaded into counter.
+Timer (M02)        COUNT          0x08     16-bit  RO      Live countdown register decremented by 1Hz tick.
+Timer (M02)        STATUS         0x0C     2-bit   RW/W1C  bit 0: irq_pending (W1C), bit 1: done flag (RO).
+GPIO (M03)         DIR            0x00     8-bit   RW      Internal direction register (1=output, 0=input).
+GPIO (M03)         OUT            0x04     8-bit   RW      Output register driven to pad drivers.
+GPIO (M03)         IN             0x08     8-bit   RO      Internal 2-stage synchronizer flop output.
+GPIO (M03)         IRQ            0x0C     8-bit   RW/WA   IRQ-on-change mask & write-any clear.
+PWM Gen (M04)      CTRL           0x00     1-bit   RW      bit 0: pwm_en (firmware heartbeat enable).
+PWM Gen (M04)      DUTY           0x04     8-bit   RW      Duty cycle numerator (0 to 255).
+PWM Gen (M04)      PERIOD         0x08     16-bit  RW      Period in system clock ticks (default 1000).
+PWM Gen (M04)      STATUS         0x0C     2-bit   RO      bit 0: pwm_active, bit 1: force_disabled.
+7-Segment (M05)    DATA           0x00     16-bit  RW      Four 4-bit nibbles for digit display data.
+7-Segment (M05)    CTRL           0x04     2-bit   RW      bit 0: disp_en, bit 1: blink_en.
+7-Segment (M05)    STATUS         0x08     4-bit   RO      Active digit index (0 to 3) from mux counter.
+7-Segment (M05)    BRIGHT         0x0C     4-bit   RW      Display brightness register (0 to 15).
+Watchdog (M06)     CTRL           0x00     2-bit   RW      bit 0: wdt_en, bit 1: irq_en.
+Watchdog (M06)     WINDOW         0x04     16-bit  RW      Stall timeout threshold in seconds (default 5s).
+Watchdog (M06)     KICK           0x08     32-bit  WA      Firmware heartbeat service (clears stall count).
+Watchdog (M06)     STATUS         0x0C     2-bit   RO      bit 0: wdt_locked (SET-ONLY), bit 1: stall_detected.
+
+
+================================================================================
+2. INTERNAL TEST PLAN MATRIX (MODULE-TO-MODULE VERIFICATION)
+================================================================================
+
+--------------------------------------------------------------------------------
+2.1 Level 1: Block/IP Internal Interface & Register Verification
+--------------------------------------------------------------------------------
+
+Test ID       : TC_INT_PWM_01
+Test Name     : PWM Internal Register Read/Write & Reset Defaults
+Internal Path : AXI Width Adapter -> PWM Register Bus (axi_pwm_top)
+Signals Tested: axi_awaddr, axi_wdata, axi_wvalid, axi_wready, axi_rdata, axi_rvalid
+Stimulus      : 1. Read default registers post-reset.
+                2. Write non-default values to DUTY (0x40, 0x80, 0xFF) and PERIOD (100, 5000).
+                3. Read back all registers over AXI bus.
+Pass Criteria : CTRL=0x0, DUTY=128, PERIOD=1000, STATUS=0x0 on reset.
+                Readback matches written values; unused upper bits mask to 0.
+Severity      : Critical
+
+Test ID       : TC_INT_PWM_02
+Test Name     : PWM Degenerate Configuration & Internal Math Safety
+Internal Path : AXI Register Bus -> PWM Counter & Threshold Comparator
+Signals Tested: PERIOD register, DUTY register, internal cycle counter
+Stimulus      : Program PERIOD=0 and PERIOD=1; write DUTY=0 over internal bus.
+Pass Criteria : Internal comparator handles edge cases without zero-division simulation
+                faults or counter lockup.
+Severity      : Medium
+
+Test ID       : TC_INT_TMR_01
+Test Name     : Timer Prescaler & Counter Decrement Verification
+Internal Path : Internal Clock Prescaler -> COUNT Register Logic
+Signals Tested: timer_load, timer_count, tick_1s internal strobe
+Stimulus      : Configure LOAD=0x003C (60s), set CTRL.timer_en=1 with test prescaler.
+Pass Criteria : COUNT decrements by exactly 1 on every internal 1-second tick strobe;
+                freezes when timer_en=0.
+Severity      : High
+
+Test ID       : TC_INT_TMR_02
+Test Name     : Timer Expiry, W1C Clearing, and Done Pulse
+Internal Path : COUNT Decrementer -> STATUS Register -> timer_irq_o & timer_done_o
+Signals Tested: timer_done_int, timer_irq_o, STATUS[0] (irq_pending), STATUS[1] (done)
+Stimulus      : Let COUNT decrement from 0x0002 to 0x0000; write 1 to STATUS[0].
+Pass Criteria : timer_done_o asserts immediately at 0; STATUS[1]=1; timer_irq_o asserts.
+                Writing 1 to STATUS[0] clears irq_pending and de-asserts timer_irq_o;
+                done flag remains set until next LOAD.
+Severity      : Critical
+
+Test ID       : TC_INT_WDT_01
+Test Name     : Watchdog SET-ONLY Latch Irreversibility Proof
+Internal Path : AXI Slave Bus -> STATUS Register (wdt_locked Flip-Flop)
+Signals Tested: axi_wdata, axi_awaddr, STATUS[0] (wdt_locked)
+Stimulus      : Trigger WDT lock; then attempt software writes to STATUS (0x0C),
+                CTRL (0x00), and KICK (0x08) with all-ones (0xFFFFFFFF) and all-zeros.
+Pass Criteria : wdt_locked remains strictly 1; software writes are completely ignored;
+                lock latch has no synchronous clear path.
+Severity      : Critical
+
+Test ID       : TC_INT_WDT_02
+Test Name     : Watchdog Stall Counter Service (KICK Heartbeat)
+Internal Path : AXI Slave Bus -> Stall Counter Reset Logic
+Signals Tested: KICK register, internal stall counter, wdt_locked_o
+Stimulus      : Enable WDT with WINDOW=2s. Perform internal bus write to KICK every 1.5s
+                for 10 consecutive cycles.
+Pass Criteria : Internal stall counter continuously clears to 0; wdt_locked_o remains 0.
+Severity      : High
+
+Test ID       : TC_INT_WDT_03
+Test Name     : Watchdog Firmware Stall Timeout Detection
+Internal Path : Internal Prescaler -> Stall Counter Overflow -> wdt_locked_o
+Signals Tested: internal stall counter, wdt_locked_o, wdt_irq_o
+Stimulus      : Enable WDT with WINDOW=2s. Cease all writes to KICK for 2.1 seconds.
+Pass Criteria : Stall counter hits WINDOW threshold; latches wdt_locked_o=1 and asserts
+                internal wdt_irq_o to core PIC.
+Severity      : Critical
+
+Test ID       : TC_INT_GPIO_01
+Test Name     : GPIO Internal Register Direction & Metastability Isolation
+Internal Path : AXI Slave Bus -> DIR, OUT, IN Flops
+Signals Tested: DIR, OUT, IN registers, 2-flop internal synchronizer
+Stimulus      : Configure DIR=0x0F over AXI; write OUT=0xAA; inject transitions on input.
+Pass Criteria : Internal OUT register stores data; 2-stage synchronizer resolves
+                asynchronous inputs cleanly into IN register without metastability.
+Severity      : High
+
+Test ID       : TC_INT_GPIO_02
+Test Name     : GPIO IRQ-on-Change Internal Edge Detection & Write-Any Clear
+Internal Path : Synchronizer -> Edge Detector -> gpio_irq_o -> IRQ Register
+Signals Tested: IRQ register, gpio_irq_o
+Stimulus      : Set IRQ enable mask; trigger edge; observe gpio_irq_o; perform write-any
+                to IRQ register.
+Pass Criteria : gpio_irq_o asserts on edge detection; clears to 0 immediately upon
+                internal bus write to IRQ register.
+Severity      : High
+
+Test ID       : TC_INT_UART_01
+Test Name     : UART Internal Baud Divisor, Framing, and FIFO Backpressure
+Internal Path : AXI Slave Bus -> UART Baud Generator & TX/RX FIFOs
+Signals Tested: BAUD_DIVISOR, LCR, LSR, axi_wready_o
+Stimulus      : Write BAUD_DIVISOR=868, LCR=0x03; burst-write 32 bytes to THR.
+Pass Criteria : Baud generator divides clock correctly; internal FIFO asserts
+                axi_wready_o=0 when full to apply backpressure to interconnect.
+Severity      : Medium
+
+--------------------------------------------------------------------------------
+2.2 Level 2: Interconnect & Bus Subsystem Verification (Module-to-Module)
+--------------------------------------------------------------------------------
+
+Test ID       : TC_INT_BUS_01
+Test Name     : Full 15-Slave Address Decoding & Crossbar Routing
+Internal Path : RISC-V LSU (S00) -> Crossbar (axi_interconnect) -> Slaves (M00-M06)
+Signals Tested: s00_axi_araddr, s00_axi_awaddr, m00-m06_axi_arvalid, m00-m06_axi_awvalid
+Stimulus      : Master S00 executes single-word read/write to base addresses of UART (M00),
+                RAM (M01), Timer (M02), GPIO (M03), PWM (M04), Seg7 (M05), and WDT (M06).
+Pass Criteria : Only the targeted slave port receives valid strobes; zero cross-talk,
+                dual-select, or corrupted route addresses.
+Severity      : Critical
+
+Test ID       : TC_INT_BUS_02
+Test Name     : Unmapped Memory Access Trapping (M07-M14 Error Stubs)
+Internal Path : Master (S00) -> Crossbar -> Error Stubs (M07-M14)
+Signals Tested: m07_m14_axi_bresp, m07_m14_axi_rresp, s00_axi_bresp, s00_axi_rresp
+Stimulus      : Read and write unmapped address windows (0x1700_0000, 0x1F00_0000).
+Pass Criteria : Interconnect routes to internal error stubs; returns SLVERR (2'b10) or
+                DECERR (2'b11); interconnect does not hang; bus handshakes complete cleanly.
+Severity      : High
+
+Test ID       : TC_INT_BUS_03
+Test Name     : 64-bit to 32-bit Width Adapter Conversion & Strobe Steering
+Internal Path : 64-bit Interconnect Master -> axi_width_adapter -> 32-bit Peripheral
+Signals Tested: 64-bit wdata/wstrb, 32-bit wdata/wstrb, split burst tracking
+Stimulus      : 1. Perform 64-bit aligned read/write to 32-bit peripheral (0x1400_0000).
+                2. Perform unaligned 32-bit write on high lane [63:32].
+Pass Criteria : Width adapter splits 64b transfers into two consecutive 32b transactions;
+                steers byte enable strobes (wstrb) accurately to low/high registers.
+Severity      : Critical
+
+Test ID       : TC_INT_BUS_04
+Test Name     : Multi-Master Contention & Arbitration Fairness
+Internal Path : LSU (S00), IFU (S01), SB (S02) -> Interconnect Arbiter -> RAM (M01)
+Signals Tested: s00_axi_arvalid, s01_axi_arvalid, s02_axi_arvalid, arbitrated grants
+Stimulus      : Assert simultaneous read requests on S00 (LSU) and S01 (IFU) targeting RAM.
+Pass Criteria : Interconnect arbitrates grants without deadlock, livelock, or data interleaving
+                corruption; round-robin / priority policy adhered to strictly.
+Severity      : High
+
+Test ID       : TC_INT_BUS_05
+Test Name     : Pipelined Transactions & Out-of-Order ID Tracking
+Internal Path : Core Master Ports -> Interconnect ID Queues -> Slaves
+Signals Tested: arid, awid, rid, bid, tag tracking logic
+Stimulus      : Issue multiple pipelined transactions with distinct ARID tags before
+                prior responses complete.
+Pass Criteria : Responses returned with matching RID/BID tags adhering to AXI ordering
+                rules without losing transaction context.
+Severity      : High
+
+Test ID       : TC_INT_BUS_06
+Test Name     : Slave Backpressure Handshake Integrity
+Internal Path : Peripheral Ready Gates -> Interconnect Handshake Registers
+Signals Tested: axi_awready, axi_wready, axi_arready, axi_rready
+Stimulus      : De-assert slave ready signals for 20 cycles during active burst writes.
+Pass Criteria : Interconnect holds valid signals and data stable; no lost beats or premature
+                timeout aborts.
+Severity      : High
+
+--------------------------------------------------------------------------------
+2.3 Level 3 & Level 4: Hardware Safety Interlock & Fault-Injection Tests
+--------------------------------------------------------------------------------
+
+Test ID       : TC_INT_SFT_01
+Test Name     : Zero-Latency Hardware Interlock Propagation
+Internal Path : Timer (timer_done_o) -> WDT (wdt_trigger_i) -> PWM (pwm_force_disable_i)
+Signals Tested: timer_done_int, wdt_locked_int, internal PWM disable gate
+Stimulus      : Force Timer COUNT to zero; measure clock cycles between timer_done_o
+                rising edge and PWM disable signal activation.
+Pass Criteria : Latency is exactly 0 clock cycles; pure combinational gate propagation
+                through internal wires in soc_top.sv.
+Severity      : Critical
+
+Test ID       : TC_INT_SFT_02
+Test Name     : Post-Lockout Firmware Override Immunity
+Internal Path : RISC-V LSU -> AXI Bus -> PWM Registers (while wdt_locked_int=1)
+Signals Tested: s00_axi_wdata, PWM CTRL register, internal PWM active gate
+Stimulus      : While WDT is in locked state (wdt_locked_int=1), execute firmware writes
+                attempting to re-enable PWM (CTRL.pwm_en=1, DUTY=255).
+Pass Criteria : Internal hardwired disable signal overrides all register states; internal
+                PWM generator gate remains forced LOW.
+Severity      : Critical
+
+Test ID       : TC_INT_SFT_03
+Test Name     : Actuator Heartbeat Lapsing (Single Tick Miss)
+Internal Path : Firmware Loop -> PWM CTRL Register (pwm_en bit)
+Signals Tested: PWM CTRL[0] (pwm_en), internal heartbeat timer
+Stimulus      : Simulate CPU branch delay or missed 1-second refresh of PWM CTRL.pwm_en.
+Pass Criteria : When firmware fails to re-write pwm_en, internal PWM enable lapses to 0;
+                actuator generation ceases cleanly.
+Severity      : High
+
+Test ID       : TC_INT_SFT_04
+Test Name     : Internal PIC Interrupt Priority Under Concurrent Events
+Internal Path : timer_irq_o, gpio_irq_o, wdt_irq_o -> RISC-V PIC Controller
+Signals Tested: PIC pending registers, interrupt dispatch lines
+Stimulus      : Simultaneously assert gpio_irq_o and timer_done_o.
+Pass Criteria : RISC-V PIC prioritizes dose-complete ISR over GPIO switch update;
+                prevents corrupting active dosage state.
+Severity      : High
+
+
+================================================================================
+3. SYSTEMVERILOG ASSERTIONS (SVA) FOR INTERNAL MODULE-TO-MODULE SIGNALS
+================================================================================
+
+The following formal safety assertions monitor internal module-to-module wires
+inside soc_top.sv:
+
+// Property 1: Internal safety interlock must force PWM silence on WDT lock
+property p_internal_pwm_silenced_on_wdt_lock;
+    @(posedge clk)
+    (u_wdt.wdt_locked_o == 1'b1) |-> (u_pwm.pwm_force_disable_i == 1'b1);
+endproperty
+assert property (p_internal_pwm_silenced_on_wdt_lock)
+    else $fatal(1, "[INTERNAL SAFETY VIOLATION] PWM force disable not asserted when WDT locked!");
+
+// Property 2: Internal wdt_locked latch must be irreversible without physical reset
+property p_internal_wdt_lock_irreversible;
+    @(posedge clk) disable iff (!rst_n)
+    (u_wdt.wdt_locked_o == 1'b1) |=> (u_wdt.wdt_locked_o == 1'b1);
+endproperty
+assert property (p_internal_wdt_lock_irreversible)
+    else $fatal(1, "[INTERNAL SAFETY VIOLATION] wdt_locked cleared without rst_n assertion!");
+
+// Property 3: Timer Done pulse must trip WDT Lock on the next clock edge
+property p_internal_timer_triggers_wdt;
+    @(posedge clk) disable iff (!rst_n)
+    (u_timer.timer_done_o == 1'b1) |=> (u_wdt.wdt_locked_o == 1'b1);
+endproperty
+assert property (p_internal_timer_triggers_wdt)
+    else $error("[INTERNAL TIMING VIOLATION] WDT failed to latch lock upon timer_done_o!");
+
+// Property 4: Unmapped AXI address access must return error response
+property p_internal_unmapped_axi_error;
+    @(posedge clk) disable iff (!rst_n)
+    (u_interconnect.m07_axi_bvalid && u_interconnect.m07_axi_bready) |->
+    (u_interconnect.m07_axi_bresp == 2'b10 || u_interconnect.m07_axi_bresp == 2'b11);
+endproperty
+assert property (p_internal_unmapped_axi_error)
+    else $error("[INTERNAL PROTOCOL VIOLATION] Unmapped bus access did not return SLVERR/DECERR!");
+
+
+================================================================================
+4. INTERNAL SIGN-OFF & COVERAGE REQUIREMENTS
+================================================================================
+1. Line & Branch Coverage: >= 95% on all internal peripheral RTL modules.
+2. Safety Paths: 100% toggle and condition coverage on timer_done_int,
+   wdt_locked_int, and pwm_force_disable_i.
+3. Crossbar Routing: 100% coverage on all 3 Masters x 15 Slaves address bins.
+4. FSM Coverage: 100% arc coverage for Width Adapters, AXI crossbar, and IP controllers.
+================================================================================

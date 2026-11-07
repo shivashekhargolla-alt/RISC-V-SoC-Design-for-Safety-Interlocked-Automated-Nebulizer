@@ -1,0 +1,2 @@
+timer_irq_o,output,1
+timer_done_o,output,1

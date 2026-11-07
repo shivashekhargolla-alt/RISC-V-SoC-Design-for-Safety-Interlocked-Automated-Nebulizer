@@ -15,43 +15,66 @@ The safety interlock lives entirely in hardware (Watchdog Timer) — a firmware 
 ## Repository layout
 
 ```
-project/
-├── riscv/                          RISC-V VeeR EL2 processor core
-│   ├── design/                     RTL source (SV/V)
-│   ├── testbench/                  Simulation testbench & hex images
-│   ├── verification/               Block-level verification (pyUVM/cocotb)
-│   ├── tools/                      Config scripts, riscv-dv, riscof
-│   └── docs/                       VeeR EL2 PRM and source docs
-│
-├── axi4-interconnect-3to15/        AXI4 3-master × 15-slave interconnect
-│   ├── rtl/interconnect/           Interconnect RTL + SoC top + testbenches
-│   │   ├── axi_interconnect.v      Core crossbar logic
-│   │   ├── axi_interconnect_wrap_3x15.v   Parameterised wrapper
-│   │   ├── arbiter.v / priority_encoder.v
-│   │   ├── axi_width_adapter.sv    64-bit IC ↔ 32-bit peripheral bridge
-│   │   ├── soc_top.sv              SoC integration top (RISC-V + IC + IPs)
-│   │   ├── tb_soc_top.sv           Full SoC testbench
-│   │   ├── tb_axi_interconnect_3x15.sv    Interconnect + UART testbench
-│   │   └── tb_pwm_top.sv           Standalone PWM testbench  ← new
-│   ├── tb/                         Earlier 2x8 testbenches
-│   ├── run/
-│   │   ├── runfile.f               2x8 filelist
-│   │   └── pwm_runfile.f           PWM standalone filelist   ← new
-│   └── Makefile                    All simulation targets
-│
-├── uart/                           AXI-Lite UART IP (external, BSC/CIC-IPN)
-│   └── src/rtl/                    axi_uart_top.v + sub-modules
-│
-├── pwm/                            AXI-Lite PWM Generator IP  ← new
-│   ├── README.md
-│   ├── project.config
-│   ├── scripts/filelist
-│   └── src/
-│       ├── include/pwm_defines.vh  Register-map & AXI width defines
-│       └── rtl/axi_pwm_top.v       PWM Generator RTL
-│
-├── spec.pdf                        NebuCore SoC specification
-└── NebuCore_Block_Diagram_Signal_List.pdf
+Secure-IoT-Gateway-SoC/
+├── doc/                            Architecture, signal lists, register maps, test plans
+│   ├── NebuCore_Block_Diagram_Signal_List.pdf
+│   ├── RISC-V_VeeR_EL2_PRM.pdf
+│   ├── external.txt
+│   ├── internal.txt
+│   ├── register_map.txt
+│   ├── spec.pdf
+│   └── test_plan.md
+├── firmware/                       RISC-V firmware source, linker script, and hex converter
+│   ├── elf_to_hex.py
+│   ├── nebulizer.ld
+│   ├── nebulizer_test.c
+│   ├── nebulizer_test.dis
+│   ├── nebulizer_test.elf
+│   ├── nebulizer_test.hex
+│   └── nebulizer_test.lst
+├── main                            Top-level Makefile (build entry point)
+├── README.md                       Project documentation
+├── rtl/                            RTL designs (SoC top, AXI interconnect, VeeR EL2 core, peripheral IPs)
+│   ├── arbiter.v
+│   ├── axi_interconnect.v
+│   ├── axi_interconnect_wrap_3x15.v
+│   ├── axi_width_adapter.sv
+│   ├── priority_encoder.v
+│   ├── soc_top.sv
+│   ├── tb_axi_interconnect_3x15.sv
+│   ├── tb_pwm_top.sv
+│   ├── tb_soc_top.sv
+│   ├── gpio/                       AXI-Lite GPIO IP
+│   ├── pwm/                        AXI-Lite PWM Generator IP
+│   ├── riscv/                      RISC-V VeeR EL2 processor core RTL
+│   ├── seg7/                       AXI-Lite 7-Segment Controller IP
+│   ├── timer/                      AXI-Lite Countdown Timer IP
+│   ├── uart/                       AXI-Lite UART IP
+│   └── wdt/                        AXI-Lite Watchdog Timer IP
+├── run/                            VCS run scripts and filelists
+│   ├── axi_interconnect_wrap_1x8.v
+│   ├── axi_interconnect_wrap_2x8.v
+│   ├── pwm_runfile.f
+│   └── runfile.f
+├── scripts/                        Python and helper scripts (interconnect wrappers)
+│   ├── axi_interconnect_wrap.py
+│   └── axi_interconnect_wrap_2x8.v
+├── snapshots/                      VeeR EL2 core configuration snapshots (default)
+│   └── default/
+│       ├── common_defines.vh
+│       ├── defines.h
+│       ├── el2_param.vh
+│       ├── el2_pdef.vh
+│       ├── link.ld
+│       ├── pd_defines.vh
+│       ├── perl_configs.pl
+│       ├── pic_map_auto.h
+│       └── whisper.json
+├── tb/                             Testbench sources and slave stubs
+│   ├── axi_slave_stub.v
+│   ├── tb_axi_interconnect.v
+│   └── tb_axi_interconnect_2x8.v
+└── verdi_config_file               Verdi / nWave waveform viewer configuration
 ```
 
 ---
@@ -70,8 +93,12 @@ project/
                     │  └─────────────┘   │                          │    │
                     │                    │  M00 ─► UART  (0x1000_0000)│  │
   uart_rx ─────────►│                    │  M01 ─► RAM   (0x0000_0000)│  │
-  uart_tx ◄─────────│                    │  M04 ─► PWM   (0x1400_0000)│  │◄── pwm_force_disable
-  uart_irq ◄────────│                    │  M02-M03,M05-M14: stubs    │  │
+  uart_tx ◄─────────│                    │  M02 ─► Timer (0x1200_0000)│  │
+  uart_irq ◄────────│                    │  M03 ─► GPIO  (0x1300_0000)│  │
+                    │                    │  M04 ─► PWM   (0x1400_0000)│  │◄── pwm_force_disable
+                    │                    │  M05 ─► Seg7  (0x1500_0000)│  │
+                    │                    │  M06 ─► WDT   (0x1600_0000)│  │
+                    │                    │  M07-M14: error slave stubs │  │
                     │                    └────────────────────────┘    │──► pwm_out
                     └─────────────────────────────────────────────────┘
 ```
@@ -82,122 +109,38 @@ project/
 |---------------------------|--------|-------------------|---------|
 | `0x0000_0000–0x3FFF_FFFF` | 1 GiB  | RAM (boot + data) | M01     |
 | `0x1000_0000–0x10FF_FFFF` | 16 MiB | UART              | M00     |
+| `0x1200_0000–0x1200_0FFF` | 4 KiB  | Countdown Timer   | M02     |
+| `0x1300_0000–0x1300_0FFF` | 4 KiB  | GPIO              | M03     |
 | `0x1400_0000–0x1400_0FFF` | 4 KiB  | PWM Generator     | M04     |
-
----
-
-## Peripheral IPs
-
-### Already integrated
-
-| IP | Bus port | Notes |
-|----|----------|-------|
-| UART (axi_uart_top) | M00 | Serial logging; AXI-Lite 32-bit via width adapter |
-| RAM (behavioural) | M01 | 64-bit AXI4; exposed as soc_top ports for TB |
-
-### Added in this session
-
-| IP | Bus port | Notes |
-|----|----------|-------|
-| **PWM Generator** (axi_pwm_top) | M04 | AXI-Lite 32-bit via width adapter |
-
-### Still to add (per spec)
-
-| IP | Suggested port |
-|----|----------------|
-| Timer (countdown + IRQ) | M02 |
-| GPIO (volume switches + alarm) | M03 |
-| Seven-Segment Display Controller | M05 |
-| Watchdog Timer (safety interlock) | M06 |
-
----
-
-## PWM Generator — what was built
-
-### Files
-
-| File | Description |
-|------|-------------|
-| `pwm/src/include/pwm_defines.vh` | AXI widths, register offsets, reset defaults |
-| `pwm/src/rtl/axi_pwm_top.v` | AXI-Lite slave PWM Generator RTL |
-| `axi4-interconnect-3to15/rtl/interconnect/tb_pwm_top.sv` | Standalone testbench |
-| `axi4-interconnect-3to15/run/pwm_runfile.f` | VCS filelist |
-
-### Register map
-
-| Offset | Name   | Access | Description |
-|--------|--------|--------|-------------|
-| `0x00` | CTRL   | R/W    | `[0]` pwm_en — firmware must refresh once per Timer tick |
-| `0x04` | DUTY   | R/W    | `[7:0]` duty cycle numerator (0 = 0 %, 255 ≈ 100 %) |
-| `0x08` | PERIOD | R/W    | `[15:0]` period in clock ticks (default 1000 → 100 kHz @ 100 MHz) |
-| `0x0C` | STATUS | R      | `[0]` pwm_active, `[1]` force_disabled |
-
-### Safety mechanism
-
-`pwm_force_disable_i` is a **combinational** input driven by the Watchdog Timer (`wdt_locked`). When asserted it forces `pwm_out` LOW with zero clock-cycle latency — independent of the `pwm_en` register or any firmware activity.
-
-```
-pwm_out = ctrl_pwm_en  AND  (counter < duty_threshold)  AND  NOT pwm_force_disable_i
-```
-
-### How it is wired into the SoC
-
-```
-soc_top.sv
-  ├── axi_interconnect_wrap_3x15  M04 → m04_* wires
-  ├── axi_width_adapter           64-bit IC ↔ 32-bit PWM
-  └── axi_pwm_top                 u_pwm
-        ├── pwm_force_disable_i ← soc_top port  (→ Watchdog, future)
-        └── pwm_out_o           → soc_top port  (→ Piezo Driver)
-```
+| `0x1500_0000–0x1500_0FFF` | 4 KiB  | 7-Segment Display | M05     |
+| `0x1600_0000–0x1600_0FFF` | 4 KiB  | Watchdog Timer    | M06     |
 
 ---
 
 ## Running simulations
 
-All targets are driven from `axi4-interconnect-3to15/`:
+All targets can be run using `./main <target>` or `make -f main <target>` from the project root:
 
 ```bash
-cd axi4-interconnect-3to15
+./main sim_1x8        # 1-master / 8-slave interconnect TB
+./main sim_2x8        # 2-master / 8-slave interconnect TB
+./main sim_3x15       # 3-master / 15-slave interconnect TB (with UART IP)
+./main sim_pwm        # Standalone PWM Generator TB
+./main sim_soc        # Complete SoC TB (RISC-V + Interconnect + All Peripherals)
+./main firmware       # Cross-compile firmware for RV32IMC
+./main sim_firmware   # SoC simulation with firmware loaded into memory
+./main clean          # Remove all generated build and simulation artefacts
 ```
 
-| Command | What it runs |
-|---------|-------------|
-| `make sim_pwm` | **PWM standalone TB** (new) |
-| `make sim_3x15` | AXI interconnect + UART TB |
-| `make sim_soc` | Full SoC TB (RISC-V + IC + UART) |
-| `make sim_2x8` | Earlier 2-master interconnect TB |
-| `make waves_pwm` | Open `tb_pwm_top.vcd` in GTKWave |
-| `make clean` | Remove all generated artefacts |
-
-### PWM simulation in detail
+### Waveform Viewing
 
 ```bash
-make sim_pwm
-# compiles:  compile_pwm.log
-# simulates: sim_pwm.log
-# waveform:  tb_pwm_top.vcd
+# In Verdi:
+verdi -rcFile verdi_config_file
+
+# In GTKWave:
+./main waves_1x8
+./main waves_2x8
+./main waves_pwm
+./main waves_soc
 ```
-
-The testbench runs 5 self-checking tests and prints `PASS` or `FAIL (N errors)`:
-
-| Test | Checks |
-|------|--------|
-| 1 | Reset defaults (CTRL=0, DUTY=128, PERIOD=1000, STATUS=0) |
-| 2 | Write DUTY=0x40 + PERIOD=0x100, read-back both |
-| 3 | Enable PWM — `pwm_out` toggles high within 2 periods |
-| 4 | Assert `pwm_force_disable` — `pwm_out` stays LOW (combinational) |
-| 5 | Clear `pwm_en` — output stays LOW after force_disable released |
-
-### Simulator requirements
-
-- Synopsys VCS U-2023.03 (set `VCS_HOME` in Makefile if path differs)
-- License server: `/home/install/LMGR/license.lic`
-- GTKWave (optional, for waveform viewing)
-
----
-
-## Spec documents
-
-- `spec.pdf` — Full NebuCore SoC specification (architecture, signal list, data/control paths)
-- `NebuCore_Block_Diagram_Signal_List.pdf` — Block diagram and per-IP signal tables

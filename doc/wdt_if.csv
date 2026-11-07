@@ -1,0 +1,4 @@
+wdt_trigger_i,input,1
+wdt_locked_o,output,1
+wdt_irq_o,output,1
+alarm_out_o,output,1

@@ -1,0 +1,143 @@
+
+../firmware/nebulizer_test.elf:     file format elf32-littleriscv
+
+
+Disassembly of section .text.init:
+
+00000000 <_start>:
+   0:	00010117          	auipc	sp,0x10
+   4:	f0010113          	add	sp,sp,-256 # ff00 <_end>
+   8:	555552b7          	lui	t0,0x55555
+   c:	55928293          	add	t0,t0,1369 # 55555559 <_end+0x55545659>
+  10:	7c029073          	csrw	0x7c0,t0
+  14:	0680006f          	j	7c <main>
+
+Disassembly of section .text:
+
+00000018 <uart_putc>:
+  18:	10000737          	lui	a4,0x10000
+  1c:	4b5c                	lw	a5,20(a4)
+  1e:	0207f793          	and	a5,a5,32
+  22:	dfed                	beqz	a5,1c <uart_putc+0x4>
+  24:	c308                	sw	a0,0(a4)
+  26:	8082                	ret
+
+00000028 <uart_puts>:
+  28:	1141                	add	sp,sp,-16
+  2a:	c422                	sw	s0,8(sp)
+  2c:	c606                	sw	ra,12(sp)
+  2e:	842a                	mv	s0,a0
+  30:	00044503          	lbu	a0,0(s0)
+  34:	e509                	bnez	a0,3e <uart_puts+0x16>
+  36:	40b2                	lw	ra,12(sp)
+  38:	4422                	lw	s0,8(sp)
+  3a:	0141                	add	sp,sp,16
+  3c:	8082                	ret
+  3e:	3fe9                	jal	18 <uart_putc>
+  40:	0405                	add	s0,s0,1
+  42:	b7fd                	j	30 <uart_puts+0x8>
+
+00000044 <uart_put_hex>:
+  44:	1101                	add	sp,sp,-32
+  46:	ca26                	sw	s1,20(sp)
+  48:	cc22                	sw	s0,24(sp)
+  4a:	c84a                	sw	s2,16(sp)
+  4c:	c64e                	sw	s3,12(sp)
+  4e:	ce06                	sw	ra,28(sp)
+  50:	892a                	mv	s2,a0
+  52:	4471                	li	s0,28
+  54:	14c00493          	li	s1,332
+  58:	59f1                	li	s3,-4
+  5a:	008957b3          	srl	a5,s2,s0
+  5e:	8bbd                	and	a5,a5,15
+  60:	97a6                	add	a5,a5,s1
+  62:	0007c503          	lbu	a0,0(a5)
+  66:	1471                	add	s0,s0,-4
+  68:	3f45                	jal	18 <uart_putc>
+  6a:	ff3418e3          	bne	s0,s3,5a <uart_put_hex+0x16>
+  6e:	40f2                	lw	ra,28(sp)
+  70:	4462                	lw	s0,24(sp)
+  72:	44d2                	lw	s1,20(sp)
+  74:	4942                	lw	s2,16(sp)
+  76:	49b2                	lw	s3,12(sp)
+  78:	6105                	add	sp,sp,32
+  7a:	8082                	ret
+
+0000007c <main>:
+  7c:	1101                	add	sp,sp,-32
+  7e:	cc22                	sw	s0,24(sp)
+  80:	100007b7          	lui	a5,0x10000
+  84:	ce06                	sw	ra,28(sp)
+  86:	ca26                	sw	s1,20(sp)
+  88:	08300713          	li	a4,131
+  8c:	c7d8                	sw	a4,12(a5)
+  8e:	4741                	li	a4,16
+  90:	c798                	sw	a4,8(a5)
+  92:	470d                	li	a4,3
+  94:	c7d8                	sw	a4,12(a5)
+  96:	0007a223          	sw	zero,4(a5) # 10000004 <_end+0xfff0104>
+  9a:	16000513          	li	a0,352
+  9e:	3769                	jal	28 <uart_puts>
+  a0:	55aa07b7          	lui	a5,0x55aa0
+  a4:	00178693          	add	a3,a5,1 # 55aa0001 <_end+0x55a90101>
+  a8:	6705                	lui	a4,0x1
+  aa:	c314                	sw	a3,0(a4)
+  ac:	14000437          	lui	s0,0x14000
+  b0:	00042023          	sw	zero,0(s0) # 14000000 <_end+0x13ff0100>
+  b4:	08000613          	li	a2,128
+  b8:	c050                	sw	a2,4(s0)
+  ba:	3e800693          	li	a3,1000
+  be:	c414                	sw	a3,8(s0)
+  c0:	404c                	lw	a1,4(s0)
+  c2:	00c59563          	bne	a1,a2,cc <main+0x50>
+  c6:	4410                	lw	a2,8(s0)
+  c8:	02d60463          	beq	a2,a3,f0 <main+0x74>
+  cc:	17400513          	li	a0,372
+  d0:	3fa1                	jal	28 <uart_puts>
+  d2:	19800513          	li	a0,408
+  d6:	3f89                	jal	28 <uart_puts>
+  d8:	14000437          	lui	s0,0x14000
+  dc:	4048                	lw	a0,4(s0)
+  de:	379d                	jal	44 <uart_put_hex>
+  e0:	1a400513          	li	a0,420
+  e4:	3791                	jal	28 <uart_puts>
+  e6:	4408                	lw	a0,8(s0)
+  e8:	3fb1                	jal	44 <uart_put_hex>
+  ea:	4529                	li	a0,10
+  ec:	3735                	jal	18 <uart_putc>
+  ee:	a001                	j	ee <main+0x72>
+  f0:	0789                	add	a5,a5,2
+  f2:	c31c                	sw	a5,0(a4)
+  f4:	1b000513          	li	a0,432
+  f8:	3f05                	jal	28 <uart_puts>
+  fa:	4785                	li	a5,1
+  fc:	c01c                	sw	a5,0(s0)
+  fe:	c602                	sw	zero,12(sp)
+ 100:	06300713          	li	a4,99
+ 104:	47b2                	lw	a5,12(sp)
+ 106:	02f75e63          	bge	a4,a5,142 <main+0xc6>
+ 10a:	140007b7          	lui	a5,0x14000
+ 10e:	47c0                	lw	s0,12(a5)
+ 110:	1d800513          	li	a0,472
+ 114:	3f11                	jal	28 <uart_puts>
+ 116:	8522                	mv	a0,s0
+ 118:	3735                	jal	44 <uart_put_hex>
+ 11a:	4529                	li	a0,10
+ 11c:	8805                	and	s0,s0,1
+ 11e:	3ded                	jal	18 <uart_putc>
+ 120:	e401                	bnez	s0,128 <main+0xac>
+ 122:	1e800513          	li	a0,488
+ 126:	3709                	jal	28 <uart_puts>
+ 128:	55aa0437          	lui	s0,0x55aa0
+ 12c:	00340793          	add	a5,s0,3 # 55aa0003 <_end+0x55a90103>
+ 130:	6485                	lui	s1,0x1
+ 132:	c09c                	sw	a5,0(s1)
+ 134:	20c00513          	li	a0,524
+ 138:	0ff40413          	add	s0,s0,255
+ 13c:	35f5                	jal	28 <uart_puts>
+ 13e:	c080                	sw	s0,0(s1)
+ 140:	a001                	j	140 <main+0xc4>
+ 142:	47b2                	lw	a5,12(sp)
+ 144:	0785                	add	a5,a5,1 # 14000001 <_end+0x13ff0101>
+ 146:	c63e                	sw	a5,12(sp)
+ 148:	bf75                	j	104 <main+0x88>

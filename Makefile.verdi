@@ -1,0 +1,74 @@
+#!/usr/bin/make -f
+# ==============================================================================
+# NebuCore SoC — Dedicated Synopsys Verdi Makefile (Makefile.verdi)
+# ==============================================================================
+
+VERDI_HOME           := /home/student/snps_tools_target/verdi/U-2023.03-SP1
+VERDI                := $(VERDI_HOME)/bin/verdi
+SNPSLMD_LICENSE_FILE := 27020@14.139.1.126:27021@14.139.1.126:27000@14.139.1.126
+LM_LICENSE_FILE      := $(SNPSLMD_LICENSE_FILE)
+export VERDI_HOME SNPSLMD_LICENSE_FILE LM_LICENSE_FILE
+
+FSDB_FILE            := soc_top.fsdb
+CONF_FILE            := verdi_config_file
+
+RC_UART_TO_RISCV     := verdi_uart_to_riscv.rc
+RC_SOC_ALL           := soc_signals.rc
+
+VERDI_FLAGS          := -kdb -rcFile $(CONF_FILE) -ssf $(FSDB_FILE)
+
+# ── Default / Help Target ─────────────────────────────────────────────────────
+.PHONY: help uart soc full dosage safety stress clean
+
+help:
+	@echo "=================================================================="
+	@echo "            NebuCore SoC — Synopsys Verdi Waveform Viewer         "
+	@echo "=================================================================="
+	@echo "Available Targets:"
+	@echo "  make -f Makefile.verdi uart      — View UART VIP Driver -> RISC-V Core trace"
+	@echo "  make -f Makefile.verdi soc       — View Full SoC Verification Suite (all buses)"
+	@echo "  make -f Makefile.verdi dosage    — View Nominal Dosage & PWM waveform"
+	@echo "  make -f Makefile.verdi safety    — View Safety Override & Zero-Latency Lockout"
+	@echo "  make -f Makefile.verdi stress    — View AXI4 Interconnect Crossbar transactions"
+	@echo "  make -f Makefile.verdi clean     — Remove Verdi logs and temp files"
+	@echo "=================================================================="
+
+# ── 1. Dedicated UART VIP Driver -> RISC-V Core Waveform ─────────────────────
+uart:
+	@echo ">>> Launching Verdi with UART VIP Driver -> RISC-V Core trace..."
+	@if [ ! -f $(FSDB_FILE) ]; then echo "ERROR: $(FSDB_FILE) not found! Run 'make sim_uvm_uart_to_riscv' first."; exit 1; fi
+	$(VERDI) $(VERDI_FLAGS) -sswr $(RC_UART_TO_RISCV) &
+
+uart_to_riscv: uart
+
+# ── 2. Full SoC Verification Suite (All Buses & Peripherals) ──────────────────
+soc:
+	@echo ">>> Launching Verdi with Full SoC signal groups..."
+	@if [ ! -f $(FSDB_FILE) ]; then echo "ERROR: $(FSDB_FILE) not found! Run 'make sim_uvm' first."; exit 1; fi
+	$(VERDI) $(VERDI_FLAGS) -sswr $(RC_SOC_ALL) &
+
+full: soc
+
+# ── 3. Dosage Test Waveform ───────────────────────────────────────────────────
+dosage:
+	@echo ">>> Launching Verdi for Nominal Dosage Sequence..."
+	@if [ ! -f $(FSDB_FILE) ]; then echo "ERROR: $(FSDB_FILE) not found! Run 'make sim_uvm_dosage' first."; exit 1; fi
+	$(VERDI) $(VERDI_FLAGS) -sswr $(RC_SOC_ALL) &
+
+# ── 4. Safety Override Waveform ───────────────────────────────────────────────
+safety:
+	@echo ">>> Launching Verdi for Safety Override & Zero-Latency Silencing..."
+	@if [ ! -f $(FSDB_FILE) ]; then echo "ERROR: $(FSDB_FILE) not found! Run 'make sim_uvm_safety' first."; exit 1; fi
+	$(VERDI) $(VERDI_FLAGS) -sswr $(RC_SOC_ALL) &
+
+# ── 5. AXI4 Crossbar Fabric Stress Waveform ───────────────────────────────────
+stress:
+	@echo ">>> Launching Verdi for AXI4 Interconnect Crossbar Stress..."
+	@if [ ! -f $(FSDB_FILE) ]; then echo "ERROR: $(FSDB_FILE) not found! Run 'make sim_uvm_stress' first."; exit 1; fi
+	$(VERDI) $(VERDI_FLAGS) -sswr $(RC_SOC_ALL) &
+
+# ── Clean Verdi Logs ──────────────────────────────────────────────────────────
+clean:
+	@echo ">>> Cleaning Verdi temporary logs..."
+	rm -rf verdiLog novadbgLog fsdbreportLog *.rc.bak
+	@echo ">>> Done."

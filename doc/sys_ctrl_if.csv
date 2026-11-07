@@ -1,0 +1,6 @@
+clk,input,1
+rst_n,input,1
+rst_vec,input,31
+nmi_int,input,1
+nmi_vec,input,31
+jtag_id,input,31

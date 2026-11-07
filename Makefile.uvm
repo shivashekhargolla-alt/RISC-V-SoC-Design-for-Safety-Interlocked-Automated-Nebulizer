@@ -1,0 +1,224 @@
+#!/usr/bin/make -f
+# ==============================================================================
+# NebuCore SoC — Dedicated UVM Verification Makefile
+# Simulator: Synopsys VCS (U-2023.03) + Verdi KDB (U-2023.03-SP1)
+# ==============================================================================
+
+# ── Tool Paths & Licenses ─────────────────────────────────────────────────────
+VCS_HOME             := /home/student/snps_tools_target/vcs/U-2023.03
+VCS                  := $(VCS_HOME)/linux64/bin/vcs
+VERDI_HOME           := /home/student/snps_tools_target/verdi/U-2023.03-SP1
+VERDI                := $(VERDI_HOME)/bin/verdi
+NOVAS_TAB            := $(VERDI_HOME)/share/PLI/VCS/linux64/novas.tab
+NOVAS_PLI            := $(VERDI_HOME)/share/PLI/VCS/linux64/pli.a
+SNPSLMD_LICENSE_FILE := 27020@14.139.1.126:27021@14.139.1.126:27000@14.139.1.126
+LM_LICENSE_FILE      := $(SNPSLMD_LICENSE_FILE)
+
+RISCV_TOOLCHAIN      := /opt/riscv/bin
+RISCV_GCC            := $(RISCV_TOOLCHAIN)/riscv64-unknown-elf-gcc
+RISCV_OBJDUMP        := $(RISCV_TOOLCHAIN)/riscv64-unknown-elf-objdump
+
+export VCS_HOME VERDI_HOME SNPSLMD_LICENSE_FILE LM_LICENSE_FILE
+
+# ── Directory Layout ──────────────────────────────────────────────────────────
+RISCV_DESIGN         := rtl/riscv/design
+FW_DIR               := firmware
+FW_UVM_SRC           := $(FW_DIR)/soc_uvm_test.c
+FW_UVM_ELF           := $(FW_DIR)/soc_uvm_test.elf
+FW_UVM_HEX           := $(FW_DIR)/soc_uvm_test.hex
+FW_UVM_LST           := $(FW_DIR)/soc_uvm_test.lst
+FW_LD                := $(FW_DIR)/nebulizer.ld
+FW_HEX_GEN           := $(FW_DIR)/elf_to_hex.py
+
+FW_CFLAGS            := -march=rv32imc_zicsr -mabi=ilp32 -Os -Wall -Wextra \
+                        -ffreestanding -nostdlib -nostartfiles \
+                        -fno-builtin -fno-common -fno-builtin-memcpy -fno-builtin-memset \
+                        -Wl,--gc-sections -Wl,--build-id=none
+
+# ── Design & Testbench Sources ────────────────────────────────────────────────
+RTL_SRCS := \
+    rtl/priority_encoder.v \
+    rtl/arbiter.v \
+    rtl/axi_interconnect.v \
+    rtl/axi_interconnect_wrap_3x15.v \
+    rtl/axi_width_adapter.sv \
+    rtl/uart/src/rtl/axi_uart_top.v \
+    rtl/uart/src/rtl/uart_controller.v \
+    rtl/uart/src/rtl/uart_transmitter.v \
+    rtl/uart/src/rtl/uart_receiver.v \
+    rtl/uart/src/rtl/uart_parity_bit_compute.v \
+    rtl/uart/src/rtl/axi_internal_fifo.v \
+    rtl/timer/src/rtl/axi_timer_top.v \
+    rtl/gpio/src/rtl/axi_gpio_top.v \
+    rtl/pwm/src/rtl/axi_pwm_top.v \
+    rtl/seg7/src/rtl/axi_seg7_top.v \
+    rtl/wdt/src/rtl/axi_wdt_top.v \
+    $(RISCV_DESIGN)/include/el2_def.sv \
+    $(RISCV_DESIGN)/lib/el2_assert.sv \
+    $(RISCV_DESIGN)/el2_mubi_pkg.sv \
+    $(RISCV_DESIGN)/el2_mem.sv \
+    $(RISCV_DESIGN)/el2_dma_ctrl.sv \
+    $(RISCV_DESIGN)/el2_pic_ctrl.sv \
+    $(RISCV_DESIGN)/el2_pmp.sv \
+    $(RISCV_DESIGN)/dbg/el2_dbg.sv \
+    $(RISCV_DESIGN)/dmi/dmi_wrapper.v \
+    $(RISCV_DESIGN)/dmi/dmi_jtag_to_core_sync.v \
+    $(RISCV_DESIGN)/dmi/dmi_mux.v \
+    $(RISCV_DESIGN)/dmi/rvjtag_tap.v \
+    $(RISCV_DESIGN)/lib/beh_lib.sv \
+    $(RISCV_DESIGN)/lib/mem_lib.sv \
+    $(RISCV_DESIGN)/lib/el2_lib.sv \
+    $(RISCV_DESIGN)/lib/el2_mem_if.sv \
+    $(RISCV_DESIGN)/lib/el2_regfile_if.sv \
+    $(RISCV_DESIGN)/lib/el2_prim_buf.sv \
+    $(RISCV_DESIGN)/lib/el2_prim_generic_buf.sv \
+    $(RISCV_DESIGN)/lib/axi4_to_ahb.sv \
+    $(RISCV_DESIGN)/lib/ahb_to_axi4.sv \
+    $(RISCV_DESIGN)/dec/el2_dec.sv \
+    $(RISCV_DESIGN)/dec/el2_dec_decode_ctl.sv \
+    $(RISCV_DESIGN)/dec/el2_dec_tlu_ctl.sv \
+    $(RISCV_DESIGN)/dec/el2_dec_ib_ctl.sv \
+    $(RISCV_DESIGN)/dec/el2_dec_gpr_ctl.sv \
+    $(RISCV_DESIGN)/dec/el2_dec_pmp_ctl.sv \
+    $(RISCV_DESIGN)/dec/el2_dec_trigger.sv \
+    $(RISCV_DESIGN)/exu/el2_exu.sv \
+    $(RISCV_DESIGN)/exu/el2_exu_alu_ctl.sv \
+    $(RISCV_DESIGN)/exu/el2_exu_mul_ctl.sv \
+    $(RISCV_DESIGN)/exu/el2_exu_div_ctl.sv \
+    $(RISCV_DESIGN)/lsu/el2_lsu.sv \
+    $(RISCV_DESIGN)/lsu/el2_lsu_bus_buffer.sv \
+    $(RISCV_DESIGN)/lsu/el2_lsu_bus_intf.sv \
+    $(RISCV_DESIGN)/lsu/el2_lsu_dccm_ctl.sv \
+    $(RISCV_DESIGN)/lsu/el2_lsu_dccm_mem.sv \
+    $(RISCV_DESIGN)/lsu/el2_lsu_ecc.sv \
+    $(RISCV_DESIGN)/lsu/el2_lsu_lsc_ctl.sv \
+    $(RISCV_DESIGN)/lsu/el2_lsu_stbuf.sv \
+    $(RISCV_DESIGN)/lsu/el2_lsu_trigger.sv \
+    $(RISCV_DESIGN)/lsu/el2_lsu_clkdomain.sv \
+    $(RISCV_DESIGN)/lsu/el2_lsu_addrcheck.sv \
+    $(RISCV_DESIGN)/ifu/el2_ifu.sv \
+    $(RISCV_DESIGN)/ifu/el2_ifu_mem_ctl.sv \
+    $(RISCV_DESIGN)/ifu/el2_ifu_ifc_ctl.sv \
+    $(RISCV_DESIGN)/ifu/el2_ifu_aln_ctl.sv \
+    $(RISCV_DESIGN)/ifu/el2_ifu_bp_ctl.sv \
+    $(RISCV_DESIGN)/ifu/el2_ifu_compress_ctl.sv \
+    $(RISCV_DESIGN)/ifu/el2_ifu_ic_mem.sv \
+    $(RISCV_DESIGN)/ifu/el2_ifu_iccm_mem.sv \
+    $(RISCV_DESIGN)/ifu/el2_ifu_tb_memread.sv \
+    $(RISCV_DESIGN)/el2_veer.sv \
+    $(RISCV_DESIGN)/el2_veer_wrapper.sv \
+    rtl/soc_top.sv \
+    rtl/tb_soc_top.sv
+
+UVM_SRCS := \
+    vip/axi4_vip/axi4_if.sv         vip/axi4_vip/axi4_pkg.sv \
+    vip/axi_lite_vip/axi_lite_if.sv vip/axi_lite_vip/axi_lite_pkg.sv \
+    vip/uart_vip/uart_if.sv         vip/uart_vip/uart_pkg.sv \
+    vip/gpio_vip/gpio_if.sv         vip/gpio_vip/gpio_pkg.sv \
+    vip/pwm_safety_vip/pwm_if.sv   vip/pwm_safety_vip/pwm_pkg.sv \
+    vip/seg7_vip/seg7_if.sv         vip/seg7_vip/seg7_pkg.sv \
+    tb/uvm/core/soc_core_if.sv      tb/uvm/core/soc_core_pkg.sv \
+    tb/uvm/env/soc_env_pkg.sv \
+    tb/uvm/tests/soc_uvm_pkg.sv \
+    tb/uvm/tb_top_uvm.sv
+
+VCS_OPTS_UVM := \
+    -full64 \
+    -sverilog \
+    +v2k \
+    -timescale=1ns/1ps \
+    -ntb_opts uvm-1.2 \
+    -debug_access+all \
+    -kdb \
+    -P $(NOVAS_TAB) $(NOVAS_PLI) \
+    +define+RV_BUILD_AXI4 \
+    +define+FW_HEX_FILE \
+    +define+FSDB \
+    +incdir+$(RISCV_DESIGN)/include \
+    +incdir+snapshots/default \
+    +incdir+rtl/uart/src/include \
+    +incdir+rtl/pwm/src/include \
+    +incdir+rtl/timer/src/include \
+    +incdir+rtl/gpio/src/include \
+    +incdir+rtl/seg7/src/include \
+    +incdir+rtl/wdt/src/include \
+    +incdir+vip/axi4_vip \
+    +incdir+vip/axi_lite_vip \
+    +incdir+vip/uart_vip \
+    +incdir+vip/gpio_vip \
+    +incdir+vip/pwm_safety_vip \
+    +incdir+vip/seg7_vip \
+    +incdir+tb/uvm/core \
+    +incdir+tb/uvm/env \
+    +incdir+tb/uvm/tests
+
+SIM_UVM := simv_soc_uvm
+TOP_UVM := tb_top_uvm
+
+# ── Default Target ────────────────────────────────────────────────────────────
+all: sim_uart_to_riscv
+
+uart: sim_uart_to_riscv
+
+# ── Build Firmware ────────────────────────────────────────────────────────────
+$(FW_UVM_ELF): $(FW_UVM_SRC) $(FW_LD)
+	@echo ">>> Compiling and linking SoC UVM firmware..."
+	$(RISCV_GCC) $(FW_CFLAGS) -T $(FW_LD) -nostdlib -nostartfiles -Wl,--gc-sections -o $@ $<
+	$(RISCV_OBJDUMP) -d $@ > $(FW_UVM_LST)
+
+$(FW_UVM_HEX): $(FW_UVM_ELF) $(FW_HEX_GEN)
+	@echo ">>> Generating hex file for readmemh..."
+	python3 $(FW_HEX_GEN) $(FW_UVM_ELF) $(FW_UVM_HEX) --word-size 8
+
+# ── Compile Simulator ─────────────────────────────────────────────────────────
+$(SIM_UVM): $(RTL_SRCS) $(UVM_SRCS) $(FW_UVM_HEX)
+	@echo ">>> Compiling SoC UVM Testbench with Synopsys VCS & Verdi KDB..."
+	$(VCS) $(VCS_OPTS_UVM) -top $(TOP_UVM) $(RTL_SRCS) $(UVM_SRCS) -o $(SIM_UVM) -l compile_soc_uvm.log
+
+# ── Test Execution Targets ────────────────────────────────────────────────────
+
+# 1. Dedicated UART VIP Driver -> RISC-V Core Test
+sim_uart_to_riscv: $(FW_UVM_HEX) $(SIM_UVM)
+	@echo ">>> Running Dedicated UART VIP Driver -> RISC-V Test (soc_uart_to_riscv_test)..."
+	./$(SIM_UVM) +UVM_TESTNAME=soc_uart_to_riscv_test +fw_hex=$(FW_UVM_HEX) -l sim_uart_to_riscv.log
+
+# 2. Complete SoC Master Test Suite (All 4 Phases)
+sim_all: $(FW_UVM_HEX) $(SIM_UVM)
+	@echo ">>> Running Complete SoC UVM Test Suite (soc_all_test)..."
+	./$(SIM_UVM) +UVM_TESTNAME=soc_all_test +fw_hex=$(FW_UVM_HEX) -l sim_soc_uvm.log
+
+# 3. Individual Test Targets
+sim_dosage: $(FW_UVM_HEX) $(SIM_UVM)
+	./$(SIM_UVM) +UVM_TESTNAME=soc_dosage_test +fw_hex=$(FW_UVM_HEX) -l sim_dosage_test.log
+
+sim_safety: $(FW_UVM_HEX) $(SIM_UVM)
+	./$(SIM_UVM) +UVM_TESTNAME=soc_safety_override_test +fw_hex=$(FW_UVM_HEX) -l sim_safety_test.log
+
+sim_stress: $(FW_UVM_HEX) $(SIM_UVM)
+	./$(SIM_UVM) +UVM_TESTNAME=soc_fabric_stress_test +fw_hex=$(FW_UVM_HEX) -l sim_stress_test.log
+
+sim_ips_to_riscv: $(FW_UVM_HEX) $(SIM_UVM)
+	./$(SIM_UVM) +UVM_TESTNAME=soc_ips_to_riscv_test +fw_hex=$(FW_UVM_HEX) -l sim_ips_to_rv_test.log
+
+sim_riscv_to_ips: $(FW_UVM_HEX) $(SIM_UVM)
+	./$(SIM_UVM) +UVM_TESTNAME=soc_riscv_to_ips_test +fw_hex=$(FW_UVM_HEX) -l sim_rv_to_ips_test.log
+
+sim_data: $(FW_UVM_HEX) $(SIM_UVM)
+	./$(SIM_UVM) +UVM_TESTNAME=soc_data_transfer_test +fw_hex=$(FW_UVM_HEX) -l sim_data_test.log
+
+# ── Verdi Waveform Launch Targets ─────────────────────────────────────────────
+verdi_uart_to_riscv:
+	@echo ">>> Launching Verdi with UART -> RISC-V signal trace (verdi_uart_to_riscv.rc)..."
+	$(VERDI) -kdb -rcFile verdi_config_file -ssf soc_top.fsdb -sswr verdi_uart_to_riscv.rc &
+
+verdi_uart: verdi_uart_to_riscv
+
+verdi_all:
+	@echo ">>> Launching Verdi with soc_top.fsdb and full SoC signal groups (soc_signals.rc)..."
+	$(VERDI) -kdb -rcFile verdi_config_file -ssf soc_top.fsdb -sswr soc_signals.rc &
+
+clean:
+	rm -rf $(SIM_UVM) $(SIM_UVM).daidir ucli.key vc_hdrs.h *.log soc_top.fsdb* verdiLog novadbgLog
+
+.PHONY: all sim_uart_to_riscv sim_all sim_dosage sim_safety sim_stress \
+        sim_ips_to_riscv sim_riscv_to_ips sim_data verdi_uart_to_riscv verdi_all clean

@@ -1,0 +1,45 @@
+# Simulator executables and compile caches
+simv*
+*.daidir/
+*.vdb/
+csrc/
+*.so
+vc_hdrs.h
+ucli.key
+
+# Waveforms and simulation dumps
+*.fsdb*
+*.vpd
+*.vcd
+novas*
+novas_dump.log
+novas.conf
+novas.rc
+
+# Verdi and tool logs
+verdiLog/
+fsdbreportLog/
+novadbgLog/
+*.log
+tr_db.log
+
+# Temporary and backup files
+.axi4-interconnect-3to15_backup/
+*.bak
+*~
+*.swp
+_swap_*
+
+# Firmware build intermediates
+firmware/*.o
+firmware/*.obj
+
+# Local symlinks to rtl
+.gpio
+.pwm
+.riscv
+.script
+.seg7
+.timer
+.uart
+.wdt

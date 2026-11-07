@@ -1,0 +1,6 @@
+scl_pad_i,input,1
+scl_pad_o,output,1
+scl_padoen_o,output,1
+sda_pad_i,input,1
+sda_pad_o,output,1
+sda_padoen_o,output,1

@@ -1,0 +1,61 @@
+; File list:
+openDirFile -d / "" "soc_top.fsdb"
+
+; signal spacing:
+signalSpacing 5
+
+; windowTimeUnit is used for zoom, cursor & marker
+windowTimeUnit 1ps
+
+; toolbar current search type
+curSTATUS ByChange
+
+addGroup "0. Master Milestone & Clocks"
+activeDirFile "" "soc_top.fsdb"
+addSignal -h 15 /tb_top_uvm/clk
+addSignal -h 15 -holdScope rst_n
+addSignal -h 15 -UNSIGNED -HEX /tb_top_uvm/u_core_if/completion_marker[31:0]
+addSignal -h 15 -holdScope trace_valid
+addSignal -h 15 -UNSIGNED -HEX -holdScope trace_addr[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope trace_insn[31:0]
+
+addGroup "1. Phase 1: AXI4 Bus & SRAM R/W"
+addSignal -h 15 -UNSIGNED -HEX /tb_top_uvm/u_axi4_if/awaddr[31:0]
+addSignal -h 15 -holdScope awvalid
+addSignal -h 15 -holdScope awready
+addSignal -h 15 -UNSIGNED -HEX -holdScope wdata[63:0]
+addSignal -h 15 -UNSIGNED -BIN -holdScope wstrb[7:0]
+addSignal -h 15 -holdScope wvalid
+addSignal -h 15 -holdScope wready
+addSignal -h 15 -UNSIGNED -HEX -holdScope araddr[31:0]
+addSignal -h 15 -holdScope arvalid
+addSignal -h 15 -holdScope arready
+addSignal -h 15 -UNSIGNED -HEX -holdScope rdata[63:0]
+addSignal -h 15 -holdScope rvalid
+addSignal -h 15 -holdScope rready
+
+addGroup "2. Phase 2: Core to Outbound IPs"
+addSignal -h 15 /tb_top_uvm/u_uart_if/uart_tx_o
+addSignal -h 15 -UNSIGNED -HEX /tb_top_uvm/u_gpio_if/gpio_pin_o[7:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope gpio_pin_oe[7:0]
+addSignal -h 15 /tb_top_uvm/u_pwm_if/pwm_out_o
+addSignal -h 15 -UNSIGNED -HEX /tb_top_uvm/u_soc/u_soc/u_pwm/duty_reg[7:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope period_reg[15:0]
+addSignal -h 15 -holdScope ctrl_pwm_en
+addSignal -h 15 -UNSIGNED -HEX /tb_top_uvm/u_seg7_if/seg_out_o[6:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope digit_sel_o[3:0]
+
+addGroup "3. Phase 3: Inbound Stimulus to Core"
+addSignal -h 15 /tb_top_uvm/u_uart_if/uart_rx_i
+addSignal -h 15 -holdScope uart_irq_o
+addSignal -h 15 -UNSIGNED -HEX /tb_top_uvm/u_gpio_if/gpio_pin_i[7:0]
+
+addGroup "4. Phase 4: Closed-Loop Bidirectional Control"
+addSignal -h 15 /tb_top_uvm/u_uart_if/uart_rx_i
+addSignal -h 15 -UNSIGNED -HEX /tb_top_uvm/u_soc/u_soc/u_pwm/duty_reg[7:0]
+addSignal -h 15 /tb_top_uvm/u_pwm_if/pwm_out_o
+addSignal -h 15 -UNSIGNED -HEX /tb_top_uvm/u_gpio_if/gpio_pin_o[7:0]
+
+addGroup "5. Safety Fault Override"
+addSignal -h 15 /tb_top_uvm/u_pwm_if/pwm_force_disable_i
+addSignal -h 15 -holdScope pwm_out_o

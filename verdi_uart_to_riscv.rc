@@ -1,0 +1,56 @@
+; File list:
+openDirFile -d / "" "soc_top.fsdb"
+
+; signal spacing:
+signalSpacing 5
+
+; windowTimeUnit is used for zoom, cursor & marker
+windowTimeUnit 1ps
+
+; toolbar current search type
+curSTATUS ByChange
+
+addGroup "0. Milestone Handshake & Clocks"
+activeDirFile "" "soc_top.fsdb"
+addSignal -h 15 /tb_top_uvm/clk
+addSignal -h 15 -holdScope rst_n
+addSignal -h 15 -UNSIGNED -HEX /tb_top_uvm/u_core_if/completion_marker[31:0]
+
+addGroup "1. Step 1: UART VIP Driver & RX Interface"
+addSignal -h 15 /tb_top_uvm/u_uart_if/uart_rx_i
+addSignal -h 15 -UNSIGNED -HEX /tb_top_uvm/u_uart_if/rx_byte_mon[7:0]
+addSignal -h 15 -holdScope uart_irq_o
+
+addGroup "2. Step 2: UART Controller Ingestion"
+addSignal -h 15 -UNSIGNED -HEX /tb_top_uvm/u_soc/u_soc/uart_araddr[31:0]
+addSignal -h 15 -holdScope uart_arvalid
+addSignal -h 15 -holdScope uart_arready
+addSignal -h 15 -UNSIGNED -HEX -holdScope uart_rdata[31:0]
+addSignal -h 15 -holdScope uart_rvalid
+addSignal -h 15 -holdScope uart_rready
+addSignal -h 15 /tb_top_uvm/cpu_read_uart_valid
+addSignal -h 15 -UNSIGNED -HEX /tb_top_uvm/cpu_read_uart_data[7:0]
+
+addGroup "3. Step 3: AXI4 Crossbar Read (Core <- UART)"
+addSignal -h 15 -UNSIGNED -HEX /tb_top_uvm/u_soc/u_soc/rv_lsu_araddr[31:0]
+addSignal -h 15 -holdScope rv_lsu_arvalid
+addSignal -h 15 -holdScope rv_lsu_arready
+addSignal -h 15 -UNSIGNED -HEX -holdScope rv_lsu_rdata[63:0]
+addSignal -h 15 -holdScope rv_lsu_rvalid
+addSignal -h 15 -holdScope rv_lsu_rready
+
+addGroup "4. Step 4: RISC-V VeeR Core Execution & Trace"
+addSignal -h 15 /tb_top_uvm/u_core_if/trace_valid
+addSignal -h 15 -UNSIGNED -HEX -holdScope trace_addr[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope trace_insn[31:0]
+
+addGroup "5. Step 5: RAM Destination & Confirmation Output"
+addSignal -h 15 -UNSIGNED -HEX /tb_top_uvm/u_axi4_if/awaddr[31:0]
+addSignal -h 15 -holdScope awvalid
+addSignal -h 15 -holdScope awready
+addSignal -h 15 -UNSIGNED -HEX -holdScope wdata[63:0]
+addSignal -h 15 -holdScope wvalid
+addSignal -h 15 -holdScope wready
+addSignal -h 15 /tb_top_uvm/ram_write_valid
+addSignal -h 15 -UNSIGNED -HEX /tb_top_uvm/ram_write_data[31:0]
+addSignal -h 15 /tb_top_uvm/u_uart_if/uart_tx_o
